@@ -39,6 +39,7 @@ yarn-error.log*
 
 # editors
 .idea
+.claude
 
 # typescript
 *.tsbuildinfo
