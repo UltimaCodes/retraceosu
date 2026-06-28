@@ -106,12 +106,20 @@ const SLIDER_HEAVY_RATIO = 0.45;
 const PRECISION_ACC = 98.5;
 const LONG_MAP_SEC = 150;
 
-function deriveLabel(bpmMedian: number, circleRatio: number, avgAcc: number) {
-  if (bpmMedian >= HIGH_BPM && circleRatio >= HIGH_CIRCLE_RATIO) return "Stream / Speed";
-  if (circleRatio >= HIGH_CIRCLE_RATIO) return "Aim / Jump";
-  if (circleRatio < SLIDER_HEAVY_RATIO) return "Tech / Flow";
-  if (avgAcc >= PRECISION_ACC) return "Precision / Acc";
-  return "All-rounder";
+// minimum lead a dimension needs over the average to claim a specialty
+const SPECIALTY_LEAD = 14;
+
+// label off the strongest skill dimension, not brittle map-attribute cutoffs
+function deriveLabel(skill: SkillDimensions): string {
+  const buckets: [string, number][] = [
+    ["Speed / Stream", skill.speed],
+    ["Aim / Jump", skill.aim],
+    ["Tech / Flow", skill.tech],
+    ["Precision / Acc", skill.accuracy],
+  ];
+  const avg = buckets.reduce((s, [, v]) => s + v, 0) / buckets.length;
+  const [name, value] = buckets.reduce((a, b) => (b[1] > a[1] ? b : a));
+  return value - avg >= SPECIALTY_LEAD ? name : "All-rounder";
 }
 
 export function analyzeTopPlays(scores: OsuScore[]): PlaystyleAnalysis {
@@ -178,7 +186,7 @@ export function analyzeTopPlays(scores: OsuScore[]): PlaystyleAnalysis {
 
   return {
     sampleSize: scores.length,
-    label: deriveLabel(bpmSpread.median, circleRatio, avgAcc),
+    label: deriveLabel(skill),
     traits: deriveTraits(bpmSpread.median, circleRatio, lengthSpread.median, avgAcc, modList),
     skill,
     sr: srSpread,

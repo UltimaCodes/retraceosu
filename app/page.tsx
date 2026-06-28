@@ -39,7 +39,7 @@ export default function Home() {
 
   return (
     <>
-      <nav className="sticky top-0 z-10 border-b border-line bg-[#2a2227]/80 backdrop-blur">
+      <nav className="sticky top-0 z-20 border-b border-line bg-[#231b20]">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <Wordmark />
           {state.status === "ready" && (
