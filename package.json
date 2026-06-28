@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "next": "16.2.9",
+    "osu-parsers": "^4.1.7",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

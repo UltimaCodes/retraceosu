@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { Profile } from "@/lib/osu/profile";
 import type { PlaystyleAnalysis } from "@/lib/playstyle";
 import { ProfileCard } from "@/app/components/ProfileCard";
@@ -42,13 +43,21 @@ export default function Home() {
       <nav className="sticky top-0 z-20 border-b border-line bg-[#231b20]">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <Wordmark />
-          {state.status === "ready" && (
-            <form action="/api/auth/logout" method="post">
-              <button className="text-sm text-white/50 transition hover:text-white">
-                Sign out
-              </button>
-            </form>
-          )}
+          <div className="flex items-center gap-4">
+            <Link
+              href="/analyze"
+              className="text-sm font-medium text-white/60 transition hover:text-pink"
+            >
+              Analyze replay
+            </Link>
+            {state.status === "ready" && (
+              <form action="/api/auth/logout" method="post">
+                <button className="text-sm text-white/50 transition hover:text-white">
+                  Sign out
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </nav>
 

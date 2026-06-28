@@ -1,0 +1,79 @@
+import {
+  BeatmapDecoder,
+  HittableObject,
+  ScoreDecoder,
+  SlidableObject,
+  SpinnableObject,
+} from "osu-parsers";
+import { HitResult, type Beatmap, type Score } from "osu-classes";
+import type { HitCounts, ParsedSummary } from "./types";
+
+type Request = { osuText: string; osrBuffer: ArrayBuffer };
+
+const ctx = self as unknown as Worker;
+
+function readStats(score: Score): { counts: HitCounts; raw: Record<string, number> } {
+  const raw: Record<string, number> = {};
+  for (const [key, value] of score.info.statistics) {
+    raw[typeof key === "number" ? (HitResult[key] ?? String(key)) : key] = value;
+  }
+  return {
+    counts: {
+      great: raw.Great ?? 0,
+      ok: raw.Ok ?? 0,
+      meh: raw.Meh ?? 0,
+      miss: raw.Miss ?? 0,
+    },
+    raw,
+  };
+}
+
+function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
+  const objects = beatmap.hitObjects;
+  const last = objects[objects.length - 1];
+  const { counts, raw } = readStats(score);
+
+  return {
+    beatmap: {
+      artist: beatmap.metadata.artist,
+      title: beatmap.metadata.title,
+      version: beatmap.metadata.version,
+      creator: beatmap.metadata.creator,
+      mode: beatmap.mode,
+      cs: beatmap.difficulty.circleSize,
+      ar: beatmap.difficulty.approachRate,
+      od: beatmap.difficulty.overallDifficulty,
+      hp: beatmap.difficulty.drainRate,
+      hitObjects: objects.length,
+      circles: objects.filter((o) => o instanceof HittableObject).length,
+      sliders: objects.filter((o) => o instanceof SlidableObject).length,
+      spinners: objects.filter((o) => o instanceof SpinnableObject).length,
+      lengthMs: last ? Math.round(last.startTime) : 0,
+    },
+    replay: {
+      player: score.info.username,
+      mods: score.info.mods?.toString() ?? "None",
+      rulesetId: score.info.rulesetId,
+      totalScore: score.info.totalScore,
+      maxCombo: score.info.maxCombo,
+      accuracy: score.info.accuracy * 100,
+      counts,
+      frameCount: score.replay?.frames.length ?? 0,
+      beatmapMD5: score.info.beatmapHashMD5,
+      rawStats: raw,
+    },
+  };
+}
+
+ctx.onmessage = async (e: MessageEvent<Request>) => {
+  try {
+    const beatmap = new BeatmapDecoder().decodeFromString(e.data.osuText);
+    const score = await new ScoreDecoder().decodeFromBuffer(
+      new Uint8Array(e.data.osrBuffer),
+      true,
+    );
+    ctx.postMessage({ ok: true, summary: summarize(beatmap, score) });
+  } catch (err) {
+    ctx.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+};
