@@ -23,6 +23,7 @@ export type Mechanics = {
   countMiss: number;
   hitErrors: { time: number; error: number }[];
   objects: number; // tap objects considered
+  insights: string[]; // plain-language findings derived from the above
 };
 
 export type ReconstructOptions = { od: number; cs: number; clockRate: number };
@@ -107,6 +108,48 @@ export function reconstruct(
   return { mechanics: aggregate(results), results };
 }
 
+function urOf(errors: number[]): number {
+  if (errors.length === 0) return 0;
+  const m = errors.reduce((a, b) => a + b, 0) / errors.length;
+  return Math.sqrt(errors.reduce((a, b) => a + (b - m) ** 2, 0) / errors.length) * 10;
+}
+
+function deriveInsights(
+  hits: { time: number; error: number }[],
+  meanError: number,
+  earlyRate: number,
+  countMiss: number,
+): string[] {
+  const out: string[] = [];
+  if (hits.length === 0) return out;
+
+  if (Math.abs(meanError) >= 8) {
+    out.push(
+      `You hit ${Math.abs(meanError).toFixed(1)}ms ${meanError < 0 ? "early" : "late"} on average — nudge your timing ${meanError < 0 ? "later" : "earlier"}.`,
+    );
+  } else {
+    out.push(`Timing is well-centered (${meanError >= 0 ? "+" : ""}${meanError.toFixed(1)}ms bias).`);
+  }
+
+  const ePct = Math.round(earlyRate * 100);
+  if (ePct >= 65) out.push(`You rush — ${ePct}% of hits land early.`);
+  else if (ePct <= 35) out.push(`You drag — ${100 - ePct}% of hits land late.`);
+
+  if (hits.length >= 20) {
+    const mid = Math.floor(hits.length / 2);
+    const u1 = urOf(hits.slice(0, mid).map((h) => h.error));
+    const u2 = urOf(hits.slice(mid).map((h) => h.error));
+    if (u2 > u1 * 1.25)
+      out.push(`Consistency drops in the back half (UR ${u1.toFixed(0)} → ${u2.toFixed(0)}) — likely stamina or focus.`);
+    else if (u1 > u2 * 1.25)
+      out.push(`You settle in — UR improves ${u1.toFixed(0)} → ${u2.toFixed(0)} across the map.`);
+    else out.push(`Consistency holds steady (UR ${u1.toFixed(0)} → ${u2.toFixed(0)}).`);
+  }
+
+  if (countMiss > 0) out.push(`${countMiss} reconstructed miss${countMiss > 1 ? "es" : ""}.`);
+  return out;
+}
+
 function aggregate(results: ObjectResult[]): Mechanics {
   const errors: number[] = [];
   const hitErrors: { time: number; error: number }[] = [];
@@ -137,19 +180,18 @@ function aggregate(results: ObjectResult[]): Mechanics {
   }
 
   const mean = errors.length ? errors.reduce((a, b) => a + b, 0) / errors.length : 0;
-  const variance = errors.length
-    ? errors.reduce((a, b) => a + (b - mean) ** 2, 0) / errors.length
-    : 0;
+  const earlyRate = errors.length ? errors.filter((e) => e < 0).length / errors.length : 0;
 
   return {
-    ur: Math.sqrt(variance) * 10,
+    ur: urOf(errors),
     meanError: mean,
-    earlyRate: errors.length ? errors.filter((e) => e < 0).length / errors.length : 0,
+    earlyRate,
     count300: c300,
     count100: c100,
     count50: c50,
     countMiss: miss,
     hitErrors,
     objects: results.length,
+    insights: deriveInsights(hitErrors, mean, earlyRate, miss),
   };
 }

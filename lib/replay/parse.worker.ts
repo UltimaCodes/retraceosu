@@ -8,6 +8,7 @@ import {
 import { HitResult, type Beatmap, type Score } from "osu-classes";
 import type { HitCounts, ParsedSummary } from "./types";
 import { reconstructFromDecoded } from "./fromDecoded";
+import { effectiveDifficulty, parseMods } from "./mods";
 
 type Request = { osuText?: string; osrBuffer: ArrayBuffer };
 
@@ -46,6 +47,11 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
   const objects = beatmap.hitObjects;
   const last = objects[objects.length - 1];
   const { counts, raw } = readStats(score);
+  const d = beatmap.difficulty;
+  const eff = effectiveDifficulty(
+    { cs: d.circleSize, ar: d.approachRate, od: d.overallDifficulty, hp: d.drainRate },
+    parseMods(score.info.mods?.toString() ?? ""),
+  );
 
   return {
     beatmap: {
@@ -54,10 +60,10 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
       version: beatmap.metadata.version,
       creator: beatmap.metadata.creator,
       mode: beatmap.mode,
-      cs: beatmap.difficulty.circleSize,
-      ar: beatmap.difficulty.approachRate,
-      od: beatmap.difficulty.overallDifficulty,
-      hp: beatmap.difficulty.drainRate,
+      cs: eff.cs,
+      ar: eff.ar,
+      od: eff.od,
+      hp: eff.hp,
       hitObjects: objects.length,
       circles: objects.filter((o) => o instanceof HittableObject).length,
       sliders: objects.filter((o) => o instanceof SlidableObject).length,

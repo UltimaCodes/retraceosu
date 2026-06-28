@@ -7,6 +7,12 @@ import type { ParsedSummary } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { HitErrorChart } from "@/app/components/HitErrorChart";
 
+// round to 1 dp, dropping a trailing .0 (e.g. 8.800001 -> "8.8", 4 -> "4")
+function r1(n: number): string {
+  const v = Math.round(n * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between border-b border-line py-2 last:border-0">
@@ -170,7 +176,7 @@ export default function AnalyzePage() {
                 <Row label="Mode" value={summary.beatmap.mode === 0 ? "osu!" : `mode ${summary.beatmap.mode}`} />
                 <Row
                   label="CS / AR / OD / HP"
-                  value={`${summary.beatmap.cs} / ${summary.beatmap.ar.toFixed(1)} / ${summary.beatmap.od} / ${summary.beatmap.hp}`}
+                  value={`${r1(summary.beatmap.cs)} / ${r1(summary.beatmap.ar)} / ${r1(summary.beatmap.od)} / ${r1(summary.beatmap.hp)}`}
                 />
                 <Row label="Length" value={formatDuration(summary.beatmap.lengthMs / 1000)} />
                 <Row
@@ -235,7 +241,17 @@ export default function AnalyzePage() {
             <div className="mt-5">
               <HitErrorChart errors={summary.mechanics.hitErrors} />
             </div>
-            <p className="mt-3 text-[11px] text-white/35">
+            {summary.mechanics.insights.length > 0 && (
+              <ul className="mt-5 space-y-1.5">
+                {summary.mechanics.insights.map((t, i) => (
+                  <li key={i} className="flex gap-2 text-sm text-white/75">
+                    <span className="text-pink">›</span>
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-4 text-[11px] text-white/35">
               UR and hit errors are reconstructed from your cursor stream vs the hit
               objects (circles + slider heads). Slider ticks and spinners aren&apos;t
               judged yet, so reconstructed counts can differ from the replay&apos;s stored
