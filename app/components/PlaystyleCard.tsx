@@ -47,7 +47,12 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
       </div>
 
       <div className="mt-4 grid gap-6 md:grid-cols-[260px_1fr]">
-        <SkillRadar skill={p.skill} />
+        <div>
+          <SkillRadar skill={p.skill} />
+          <p className="mt-1 text-center text-[11px] text-white/35">
+            scaled to your global rank · 100 ≈ #1
+          </p>
+        </div>
 
         <div>
           <div className="font-display text-3xl font-bold text-pink">{p.label}</div>

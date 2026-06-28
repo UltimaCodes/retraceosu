@@ -97,8 +97,48 @@ function stdev(values: number[]): number {
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 // map a raw metric onto 0..100 against a reference band
-const norm = (v: number, lo: number, hi: number) =>
-  Math.round(clamp(((v - lo) / (hi - lo)) * 100, 0, 100));
+const frac = (v: number, lo: number, hi: number) => clamp((v - lo) / (hi - lo), 0, 1);
+
+// overall skill level (0..100) from global rank, so #1 ~ 100 and a 5-digit sits mid-scale
+function rankLevel(globalRank: number | null): number {
+  if (!globalRank || globalRank < 1) return 30;
+  return clamp(100 - 11 * Math.log10(globalRank), 8, 99);
+}
+
+// how far a playstyle lean is allowed to push an axis away from the rank baseline
+const SKILL_SPREAD = 46;
+
+type SkillInputs = {
+  sr: number;
+  bpm: number;
+  length: number;
+  ar: number;
+  acc: number;
+  sliderRatio: number;
+};
+
+// anchor every axis to the player's rank, then spread by their map/mod tendencies
+function computeSkill(globalRank: number | null, m: SkillInputs): SkillDimensions {
+  const t = {
+    aim: frac(m.sr, 3.0, 8.0),
+    speed: frac(m.bpm, 140, 240),
+    stamina: frac(m.length, 30, 240),
+    reading: frac(m.ar, 8.0, 10.5),
+    accuracy: frac(m.acc, 94, 99.8),
+    tech: frac(m.sliderRatio, 0.25, 0.6),
+  };
+  const base = rankLevel(globalRank);
+  const meanT = (t.aim + t.speed + t.stamina + t.reading + t.accuracy + t.tech) / 6;
+  const axis = (v: number) => Math.round(clamp(base + (v - meanT) * SKILL_SPREAD, 0, 100));
+  return {
+    aim: axis(t.aim),
+    speed: axis(t.speed),
+    stamina: axis(t.stamina),
+    reading: axis(t.reading),
+    accuracy: axis(t.accuracy),
+    tech: axis(t.tech),
+  };
+}
 
 const HIGH_BPM = 185;
 const HIGH_CIRCLE_RATIO = 0.62;
@@ -122,7 +162,10 @@ function deriveLabel(skill: SkillDimensions): string {
   return value - avg >= SPECIALTY_LEAD ? name : "All-rounder";
 }
 
-export function analyzeTopPlays(scores: OsuScore[]): PlaystyleAnalysis {
+export function analyzeTopPlays(
+  scores: OsuScore[],
+  globalRank: number | null,
+): PlaystyleAnalysis {
   if (scores.length === 0) return EMPTY;
   const now = Date.now();
 
@@ -175,14 +218,14 @@ export function analyzeTopPlays(scores: OsuScore[]): PlaystyleAnalysis {
     .map(([mod, count]) => ({ mod, count, pct: Math.round((count / scores.length) * 100) }))
     .sort((a, b) => b.count - a.count);
 
-  const skill: SkillDimensions = {
-    aim: norm(srSpread.median, 3.5, 7.5),
-    speed: norm(bpmSpread.median, 150, 230),
-    stamina: norm(lengthSpread.median, 60, 240),
-    reading: norm(arSpread.median, 8.5, 10.3),
-    accuracy: norm(avgAcc, 95, 99.5),
-    tech: norm(1 - circleRatio, 0.3, 0.6),
-  };
+  const skill = computeSkill(globalRank, {
+    sr: srSpread.median,
+    bpm: bpmSpread.median,
+    length: lengthSpread.median,
+    ar: arSpread.median,
+    acc: avgAcc,
+    sliderRatio: 1 - circleRatio,
+  });
 
   return {
     sampleSize: scores.length,

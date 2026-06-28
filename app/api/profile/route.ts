@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({
       profile: shapeProfile(me),
-      playstyle: analyzeTopPlays(best),
+      playstyle: analyzeTopPlays(best, me.statistics.global_rank),
     });
   } catch (e) {
     const status = e instanceof OsuApiError && e.status === 401 ? 401 : 502;
