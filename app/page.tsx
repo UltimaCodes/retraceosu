@@ -17,7 +17,7 @@ type State =
 function Wordmark() {
   return (
     <span className="font-display text-xl font-bold tracking-tight text-white">
-      osu<span className="text-pink">!</span>lytics
+      Re<span className="text-pink">trace</span>
     </span>
   );
 }

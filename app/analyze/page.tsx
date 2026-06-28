@@ -62,7 +62,7 @@ export default function AnalyzePage() {
       <nav className="sticky top-0 z-20 border-b border-line bg-[#231b20]">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
           <Link href="/" className="font-display text-xl font-bold tracking-tight text-white">
-            osu<span className="text-pink">!</span>lytics
+            Re<span className="text-pink">trace</span>
           </Link>
           <Link href="/" className="text-sm text-white/50 transition hover:text-white">
             ← Profile

@@ -1,6 +1,6 @@
-# osulytics
+# Retrace
 
-Client-side replay analysis and playstyle profiling for osu!.
+Client-side replay autopsy and playstyle profiling for osu!.
 
 ## Setup
 

@@ -15,8 +15,8 @@ const quicksand = Quicksand({
 });
 
 export const metadata: Metadata = {
-  title: "osulytics",
-  description: "Replay analysis and playstyle profiling for osu!",
+  title: "Retrace",
+  description: "Replay autopsy and playstyle profiling for osu!",
 };
 
 export default function RootLayout({
