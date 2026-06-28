@@ -1,28 +1,20 @@
-import { HittableObject, SlidableObject } from "osu-parsers";
 import type { Beatmap, Score } from "osu-classes";
-import { reconstruct, type Frame, type Mechanics, type TapObject } from "./reconstruct";
+import { StandardRuleset, type StandardBeatmap } from "osu-standard-stable";
 import { clockRate, modsFromBitmask } from "./mods";
+import { judgePlay } from "./judge";
+import type { Frame, Mechanics } from "./reconstruct";
 
-// turns decoded osu-parsers objects into engine inputs and runs the reconstruction
+// applies the standard ruleset (+ mods, so HR flips positions and nested slider
+// objects exist), then runs the full-play judgement.
 export function reconstructFromDecoded(beatmap: Beatmap, score: Score): Mechanics {
-  const mods = modsFromBitmask(Number(score.info.rawMods));
-  const rate = clockRate(mods);
-  const odMul = mods.has("HR") ? 1.4 : mods.has("EZ") ? 0.5 : 1;
-  const csMul = mods.has("HR") ? 1.3 : mods.has("EZ") ? 0.5 : 1;
-  const od = Math.min(10, beatmap.difficulty.overallDifficulty * odMul);
-  const cs = Math.min(10, beatmap.difficulty.circleSize * csMul);
+  const raw = Number(score.info.rawMods);
+  const rate = clockRate(modsFromBitmask(raw));
 
-  const objects: TapObject[] = [];
-  for (const o of beatmap.hitObjects) {
-    if (o instanceof HittableObject || o instanceof SlidableObject) {
-      objects.push({
-        time: o.startTime,
-        x: o.startPosition.x,
-        y: o.startPosition.y,
-        isSlider: o instanceof SlidableObject,
-      });
-    }
-  }
+  const ruleset = new StandardRuleset();
+  const standard = ruleset.applyToBeatmapWithMods(
+    beatmap,
+    ruleset.createModCombination(raw),
+  ) as StandardBeatmap;
 
   const frames: Frame[] = (score.replay?.frames ?? []).map((f) => {
     const lf = f as unknown as {
@@ -33,5 +25,5 @@ export function reconstructFromDecoded(beatmap: Beatmap, score: Score): Mechanic
     return { time: lf.startTime, x: lf.position.x, y: lf.position.y, keys: lf.buttonState };
   });
 
-  return reconstruct(objects, frames, { od, cs, clockRate: rate }).mechanics;
+  return judgePlay(standard, frames, rate);
 }
