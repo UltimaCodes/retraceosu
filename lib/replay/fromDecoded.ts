@@ -1,11 +1,11 @@
 import { HittableObject, SlidableObject } from "osu-parsers";
 import type { Beatmap, Score } from "osu-classes";
 import { reconstruct, type Frame, type Mechanics, type TapObject } from "./reconstruct";
-import { clockRate, parseMods } from "./mods";
+import { clockRate, modsFromBitmask } from "./mods";
 
 // turns decoded osu-parsers objects into engine inputs and runs the reconstruction
 export function reconstructFromDecoded(beatmap: Beatmap, score: Score): Mechanics {
-  const mods = parseMods(score.info.mods?.toString() ?? "");
+  const mods = modsFromBitmask(Number(score.info.rawMods));
   const rate = clockRate(mods);
   const odMul = mods.has("HR") ? 1.4 : mods.has("EZ") ? 0.5 : 1;
   const csMul = mods.has("HR") ? 1.3 : mods.has("EZ") ? 0.5 : 1;

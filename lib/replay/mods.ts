@@ -4,6 +4,25 @@ export function parseMods(modsString: string): Set<string> {
   return new Set(modsString.match(/[A-Z]{2}/g) ?? []);
 }
 
+// legacy .osr mod bitmask -> acronyms (the decoder doesn't resolve mods without a ruleset)
+const LEGACY_MODS: [number, string][] = [
+  [1, "NF"], [2, "EZ"], [4, "TD"], [8, "HD"], [16, "HR"], [32, "SD"],
+  [64, "DT"], [128, "RX"], [256, "HT"], [512, "NC"], [1024, "FL"], [2048, "AT"],
+  [4096, "SO"], [8192, "AP"], [16384, "PF"], [536870912, "V2"],
+];
+
+export function modsFromBitmask(raw: number): Set<string> {
+  const out = new Set<string>();
+  for (const [bit, acr] of LEGACY_MODS) if ((raw & bit) === bit) out.add(acr);
+  if (out.has("NC")) out.delete("DT"); // NC sets the DT bit too
+  if (out.has("PF")) out.delete("SD"); // PF sets the SD bit too
+  return out;
+}
+
+export function modsToString(mods: Set<string>): string {
+  return mods.size ? [...mods].join("") : "None";
+}
+
 export function clockRate(mods: Set<string>): number {
   if (mods.has("DT") || mods.has("NC")) return 1.5;
   if (mods.has("HT")) return 0.75;

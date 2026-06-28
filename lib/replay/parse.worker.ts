@@ -8,7 +8,7 @@ import {
 import { HitResult, type Beatmap, type Score } from "osu-classes";
 import type { HitCounts, ParsedSummary } from "./types";
 import { reconstructFromDecoded } from "./fromDecoded";
-import { effectiveDifficulty, parseMods } from "./mods";
+import { effectiveDifficulty, modsFromBitmask, modsToString } from "./mods";
 
 type Request = { osuText?: string; osrBuffer: ArrayBuffer };
 
@@ -48,9 +48,10 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
   const last = objects[objects.length - 1];
   const { counts, raw } = readStats(score);
   const d = beatmap.difficulty;
+  const mods = modsFromBitmask(Number(score.info.rawMods));
   const eff = effectiveDifficulty(
     { cs: d.circleSize, ar: d.approachRate, od: d.overallDifficulty, hp: d.drainRate },
-    parseMods(score.info.mods?.toString() ?? ""),
+    mods,
   );
 
   return {
@@ -72,7 +73,7 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
     },
     replay: {
       player: score.info.username,
-      mods: score.info.mods?.toString() ?? "None",
+      mods: modsToString(mods),
       rulesetId: score.info.rulesetId,
       totalScore: score.info.totalScore,
       maxCombo: score.info.maxCombo,
@@ -86,14 +87,24 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
   };
 }
 
+const MODE_NAMES = ["osu!standard", "osu!taiko", "osu!catch", "osu!mania"];
+
 ctx.onmessage = async (e: MessageEvent<Request>) => {
   try {
     const score = await new ScoreDecoder().decodeFromBuffer(
       new Uint8Array(e.data.osrBuffer),
       true,
     );
+    if (score.info.rulesetId !== 0) {
+      throw new Error(
+        `Retrace only supports osu!standard — this replay is ${MODE_NAMES[score.info.rulesetId] ?? "another mode"}.`,
+      );
+    }
     const osuText = e.data.osuText ?? (await fetchBeatmap(score.info.beatmapHashMD5));
     const beatmap = new BeatmapDecoder().decodeFromString(osuText);
+    if (beatmap.mode !== 0) {
+      throw new Error("Retrace only supports osu!standard beatmaps.");
+    }
     ctx.postMessage({ ok: true, summary: summarize(beatmap, score) });
   } catch (err) {
     ctx.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });
