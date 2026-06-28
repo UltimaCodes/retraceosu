@@ -130,6 +130,7 @@ export default function AnalyzePage() {
                 type="file"
                 accept=".osu"
                 className="hidden"
+                suppressHydrationWarning
                 onChange={(e) => e.target.files && take(e.target.files)}
               />
             </label>
@@ -139,6 +140,7 @@ export default function AnalyzePage() {
                 type="file"
                 accept=".osr"
                 className="hidden"
+                suppressHydrationWarning
                 onChange={(e) => e.target.files && take(e.target.files)}
               />
             </label>
