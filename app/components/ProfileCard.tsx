@@ -49,16 +49,16 @@ export function ProfileCard({ profile }: { profile: Profile }) {
             : "linear-gradient(120deg,#ff66ab33,#7d4fff33)",
         }}
       />
-      <div className="flex flex-wrap items-end gap-4 px-6 -mt-12">
+      <div className="flex flex-wrap items-end gap-4 px-4 sm:px-6 -mt-12">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={profile.avatarUrl}
           alt={profile.username}
           className="h-24 w-24 rounded-xl border-4 border-surface bg-surface object-cover"
         />
-        <div className="pb-1">
+        <div className="min-w-0 pb-1">
           <div className="flex items-center gap-2">
-            <h2 className="font-display text-3xl font-bold text-white">
+            <h2 className="font-display text-2xl font-bold break-words text-white sm:text-3xl">
               {profile.username}
             </h2>
             {profile.isSupporter && (
@@ -74,7 +74,7 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-x-10 gap-y-4 px-6 py-5">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4 px-4 py-5 sm:gap-x-10 sm:px-6">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-white/40">
             Global Ranking
@@ -106,13 +106,13 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 px-6 pb-4">
+      <div className="flex flex-wrap gap-2 px-4 sm:px-6 pb-4">
         <Grade grade="SS" count={profile.grades.ss + profile.grades.ssh} />
         <Grade grade="S" count={profile.grades.s + profile.grades.sh} />
         <Grade grade="A" count={profile.grades.a} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 px-6 pb-6 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 px-4 sm:px-6 pb-6 sm:grid-cols-4">
         <Stat label="Accuracy" value={`${profile.accuracy.toFixed(2)}%`} />
         <Stat label="Play count" value={formatNumber(profile.playCount)} />
         <Stat label="Playtime" value={formatPlaytime(profile.playTimeSec)} />
@@ -123,7 +123,7 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         <Stat label="Level" value={`${profile.level}`} />
       </div>
 
-      <div className="px-6 pb-6">
+      <div className="px-4 sm:px-6 pb-6">
         <div className="mb-1 flex items-center justify-between text-xs text-white/40">
           <span>Level {profile.level}</span>
           <span>{profile.levelProgress}%</span>

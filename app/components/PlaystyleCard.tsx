@@ -13,9 +13,9 @@ function lengthText(s: Spread): string {
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg bg-black/20 px-3 py-2.5">
-      <div className="text-[11px] uppercase tracking-wide text-white/40">{label}</div>
-      <div className="font-display text-base font-semibold text-white">{value}</div>
+    <div className="min-w-0 rounded-lg bg-black/20 px-3 py-2.5">
+      <div className="truncate text-[11px] uppercase tracking-wide text-white/40">{label}</div>
+      <div className="font-display text-sm font-semibold text-white sm:text-base">{value}</div>
       {sub && <div className="text-[11px] text-white/40">{sub}</div>}
     </div>
   );
@@ -38,7 +38,7 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
   const circlePct = Math.round(p.circleRatio * 100);
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-6 shadow-lg shadow-black/30">
+    <section className="rounded-xl border border-line bg-surface p-4 shadow-lg shadow-black/30 sm:p-6">
       <div className="flex items-baseline justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">
           Playstyle
@@ -46,15 +46,15 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
         <span className="text-xs text-white/40">top {p.sampleSize} plays</span>
       </div>
 
-      <div className="mt-4 grid gap-6 md:grid-cols-[260px_1fr]">
-        <div>
+      <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,240px)_1fr]">
+        <div className="mx-auto w-full max-w-[260px] sm:max-w-none">
           <SkillRadar skill={p.skill} highlights={p.highlights} />
           <p className="mt-1 text-center text-[11px] text-white/35">
             scaled to your global rank · 100 ≈ #1 · hover an axis
           </p>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <div className="font-display text-3xl font-bold text-pink">{p.label}</div>
           {p.traits.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
