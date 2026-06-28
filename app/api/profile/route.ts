@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
 import { shapeProfile } from "@/lib/osu/profile";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
-import { inferPlaystyle } from "@/lib/playstyle";
+import { analyzeTopPlays } from "@/lib/playstyle";
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("osu_token")?.value;
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({
       profile: shapeProfile(me),
-      playstyle: inferPlaystyle(best),
+      playstyle: analyzeTopPlays(best),
     });
   } catch (e) {
     const status = e instanceof OsuApiError && e.status === 401 ? 401 : 502;

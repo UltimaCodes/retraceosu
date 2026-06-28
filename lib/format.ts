@@ -2,6 +2,13 @@ export function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+export function formatCompact(n: number): string {
+  return Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(n);
+}
+
 export function formatRank(n: number | null): string {
   return n == null ? "—" : `#${formatNumber(n)}`;
 }

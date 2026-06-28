@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import type { Profile } from "@/lib/osu/profile";
-import type { PlaystyleSummary } from "@/lib/playstyle";
+import type { PlaystyleAnalysis } from "@/lib/playstyle";
 import { ProfileCard } from "@/app/components/ProfileCard";
 import { PlaystyleCard } from "@/app/components/PlaystyleCard";
 import { Triangles } from "@/app/components/Triangles";
 
-type ProfileResponse = { profile: Profile; playstyle: PlaystyleSummary };
+type ProfileResponse = { profile: Profile; playstyle: PlaystyleAnalysis };
 type State =
   | { status: "loading" }
   | { status: "anon" }

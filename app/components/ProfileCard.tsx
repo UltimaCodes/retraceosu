@@ -1,32 +1,28 @@
 import type { Profile } from "@/lib/osu/profile";
 import {
   flagEmoji,
+  formatCompact,
   formatJoinDate,
   formatNumber,
   formatPlaytime,
   formatPp,
   formatRank,
 } from "@/lib/format";
+import { Sparkline } from "./Sparkline";
 
-function BigStat({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
+const GRADE_STYLES: Record<string, string> = {
+  SS: "text-[#ffd24a]",
+  S: "text-[#ffd24a]",
+  A: "text-[#8be04a]",
+};
+
+function Grade({ grade, count }: { grade: string; count: number }) {
   return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-white/40">
-        {label}
-      </div>
-      <div
-        className={`font-display text-2xl font-bold ${accent ? "text-pink" : "text-white"}`}
-      >
-        {value}
-      </div>
+    <div className="flex items-center gap-1.5 rounded-md bg-black/20 px-2.5 py-1">
+      <span className={`font-display text-sm font-bold ${GRADE_STYLES[grade]}`}>
+        {grade}
+      </span>
+      <span className="text-sm text-white/70">{formatNumber(count)}</span>
     </div>
   );
 }
@@ -78,10 +74,42 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-x-10 gap-y-4 px-6 py-5">
-        <BigStat label="Global Ranking" value={formatRank(profile.globalRank)} accent />
-        <BigStat label="Country Ranking" value={formatRank(profile.countryRank)} />
-        <BigStat label="Performance" value={formatPp(profile.pp)} accent />
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-4 px-6 py-5">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-white/40">
+            Global Ranking
+          </div>
+          <div className="font-display text-2xl font-bold text-pink">
+            {formatRank(profile.globalRank)}
+          </div>
+          {profile.rankHistory.length > 1 && (
+            <div className="mt-1 w-32 opacity-70">
+              <Sparkline values={profile.rankHistory} />
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-white/40">
+            Country Ranking
+          </div>
+          <div className="font-display text-2xl font-bold text-white">
+            {flagEmoji(profile.countryCode)} {formatRank(profile.countryRank)}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-white/40">
+            Performance
+          </div>
+          <div className="font-display text-2xl font-bold text-pink">
+            {formatPp(profile.pp)}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 px-6 pb-4">
+        <Grade grade="SS" count={profile.grades.ss + profile.grades.ssh} />
+        <Grade grade="S" count={profile.grades.s + profile.grades.sh} />
+        <Grade grade="A" count={profile.grades.a} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 px-6 pb-6 sm:grid-cols-4">
@@ -89,6 +117,10 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         <Stat label="Play count" value={formatNumber(profile.playCount)} />
         <Stat label="Playtime" value={formatPlaytime(profile.playTimeSec)} />
         <Stat label="Max combo" value={formatNumber(profile.maxCombo)} />
+        <Stat label="Ranked score" value={formatCompact(profile.rankedScore)} />
+        <Stat label="Total hits" value={formatCompact(profile.totalHits)} />
+        <Stat label="Replays watched" value={formatNumber(profile.replaysWatched)} />
+        <Stat label="Level" value={`${profile.level}`} />
       </div>
 
       <div className="px-6 pb-6">
