@@ -5,12 +5,24 @@ import Link from "next/link";
 import { parseReplay } from "@/lib/replay/parseClient";
 import type { ParsedSummary } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
+import { HitErrorChart } from "@/app/components/HitErrorChart";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between border-b border-line py-2 last:border-0">
       <span className="text-sm text-white/50">{label}</span>
       <span className="font-display text-sm font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
+function Big({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-black/20 px-3 py-2.5">
+      <div className="truncate text-[11px] uppercase tracking-wide text-white/40">{label}</div>
+      <div className={`font-display text-xl font-bold ${accent ? "text-pink" : "text-white"}`}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -130,6 +142,7 @@ export default function AnalyzePage() {
         </div>
 
         {summary && (
+          <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <section className="rounded-xl border border-line bg-surface p-6">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
@@ -177,6 +190,46 @@ export default function AnalyzePage() {
               </div>
             </section>
           </div>
+
+          <section className="mt-4 rounded-xl border border-line bg-surface p-6">
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
+                Mechanics (reconstructed)
+              </h2>
+              <span className="text-xs text-white/40">
+                {formatNumber(summary.mechanics.objects)} tap objects
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Big label="Unstable rate" value={summary.mechanics.ur.toFixed(0)} accent />
+              <Big
+                label="Timing bias"
+                value={`${Math.abs(summary.mechanics.meanError).toFixed(1)}ms ${
+                  summary.mechanics.meanError < 0 ? "early" : "late"
+                }`}
+              />
+              <Big
+                label="Early / late"
+                value={`${Math.round(summary.mechanics.earlyRate * 100)}/${
+                  100 - Math.round(summary.mechanics.earlyRate * 100)
+                }`}
+              />
+              <Big
+                label="300 / 100 / 50 / X"
+                value={`${summary.mechanics.count300}/${summary.mechanics.count100}/${summary.mechanics.count50}/${summary.mechanics.countMiss}`}
+              />
+            </div>
+            <div className="mt-5">
+              <HitErrorChart errors={summary.mechanics.hitErrors} />
+            </div>
+            <p className="mt-3 text-[11px] text-white/35">
+              UR and hit errors are reconstructed from your cursor stream vs the hit
+              objects (circles + slider heads). Slider ticks and spinners aren&apos;t
+              judged yet, so reconstructed counts can differ from the replay&apos;s stored
+              totals on slider-heavy maps.
+            </p>
+          </section>
+          </>
         )}
       </main>
     </>

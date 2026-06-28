@@ -7,6 +7,7 @@ import {
 } from "osu-parsers";
 import { HitResult, type Beatmap, type Score } from "osu-classes";
 import type { HitCounts, ParsedSummary } from "./types";
+import { reconstructFromDecoded } from "./fromDecoded";
 
 type Request = { osuText: string; osrBuffer: ArrayBuffer };
 
@@ -62,6 +63,7 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
       beatmapMD5: score.info.beatmapHashMD5,
       rawStats: raw,
     },
+    mechanics: reconstructFromDecoded(beatmap, score),
   };
 }
 

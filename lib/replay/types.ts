@@ -30,9 +30,12 @@ export type ParsedReplay = {
   rawStats: Record<string, number>;
 };
 
+import type { Mechanics } from "./reconstruct";
+
 export type ParsedSummary = {
   beatmap: ParsedBeatmap;
   replay: ParsedReplay;
+  mechanics: Mechanics;
 };
 
 export type ParseResponse =
