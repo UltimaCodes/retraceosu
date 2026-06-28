@@ -72,6 +72,8 @@ export type OsuScoreStatistics = {
 // v2 returns mods either as acronym strings or {acronym} objects depending on api version
 export type OsuMod = string | { acronym: string };
 
+export type OsuBeatmapset = { title: string; artist: string };
+
 export type OsuScore = {
   accuracy: number;
   mods: OsuMod[];
@@ -81,4 +83,16 @@ export type OsuScore = {
   created_at: string;
   statistics?: OsuScoreStatistics;
   beatmap: OsuBeatmap;
+  beatmapset?: OsuBeatmapset;
+};
+
+// from POST /beatmaps/{id}/attributes — mod-adjusted difficulty
+export type OsuDifficultyAttributes = {
+  star_rating: number;
+  max_combo?: number;
+  aim_difficulty?: number;
+  speed_difficulty?: number;
+  approach_rate?: number;
+  overall_difficulty?: number;
+  slider_factor?: number;
 };

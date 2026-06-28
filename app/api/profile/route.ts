@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
+import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 import { shapeProfile } from "@/lib/osu/profile";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { analyzeTopPlays } from "@/lib/playstyle";
@@ -14,9 +15,13 @@ export async function GET(req: NextRequest) {
       token,
       `/users/${me.id}/scores/best?mode=osu&limit=100`,
     );
+    const attrs = await mapLimit(best, 8, (s) =>
+      fetchAttributes(token, s.beatmap.id, s.mods),
+    );
+    const plays = best.map((score, i) => ({ score, attr: attrs[i] }));
     return NextResponse.json({
       profile: shapeProfile(me),
-      playstyle: analyzeTopPlays(best, me.statistics.global_rank),
+      playstyle: analyzeTopPlays(plays, me.statistics.global_rank),
     });
   } catch (e) {
     const status = e instanceof OsuApiError && e.status === 401 ? 401 : 502;

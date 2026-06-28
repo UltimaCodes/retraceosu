@@ -1,4 +1,11 @@
-import type { OsuMod, OsuScore, OsuScoreStatistics } from "./osu/types";
+import type {
+  OsuDifficultyAttributes,
+  OsuMod,
+  OsuScore,
+  OsuScoreStatistics,
+} from "./osu/types";
+
+export type EnrichedPlay = { score: OsuScore; attr: OsuDifficultyAttributes | null };
 
 export type Spread = { min: number; median: number; max: number };
 
@@ -13,21 +20,30 @@ export type SkillDimensions = {
   tech: number;
 };
 
+export type MapHighlight = {
+  title: string;
+  version: string;
+  mods: string;
+  stars: number; // mod-adjusted
+  metric: string;
+};
+
 export type PlaystyleAnalysis = {
   sampleSize: number;
   label: string;
   traits: string[];
-  skill: SkillDimensions; // 0..100, heuristic from top plays
-  sr: Spread;
+  skill: SkillDimensions; // anchored to global rank, shaped by tendencies
+  highlights: Partial<Record<keyof SkillDimensions, MapHighlight>>;
+  sr: Spread; // mod-adjusted star rating
   bpm: Spread; // mod-adjusted (effective) BPM
-  ar: Spread;
+  ar: Spread; // mod-adjusted approach rate
   cs: Spread;
-  od: Spread;
+  od: Spread; // mod-adjusted overall difficulty
   lengthSec: Spread;
-  circleRatio: number; // circles / (circles + sliders)
+  circleRatio: number;
   accuracy: { avg: number; best: number; worst: number; stdev: number };
   pp: { top: number; median: number; floor: number };
-  noMissRate: number; // share of top plays with zero misses
+  noMissRate: number;
   avgMisses: number;
   mods: ModUse[];
   modCombos: { combo: string; count: number }[];
@@ -41,6 +57,7 @@ const EMPTY: PlaystyleAnalysis = {
   label: "Unknown",
   traits: [],
   skill: { aim: 0, speed: 0, stamina: 0, reading: 0, accuracy: 0, tech: 0 },
+  highlights: {},
   sr: ZERO,
   bpm: ZERO,
   ar: ZERO,
@@ -60,7 +77,7 @@ const EMPTY: PlaystyleAnalysis = {
 function acronyms(mods: OsuMod[]): string[] {
   return mods
     .map((m) => (typeof m === "string" ? m : m.acronym))
-    .filter((m) => m !== "CL"); // classic mod is noise on lazer scores
+    .filter((m) => m !== "CL");
 }
 
 // DT/NC speed up the map, HT slows it down; everything else keeps base rate
@@ -95,8 +112,6 @@ function stdev(values: number[]): number {
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-
-// map a raw metric onto 0..100 against a reference band
 const frac = (v: number, lo: number, hi: number) => clamp((v - lo) / (hi - lo), 0, 1);
 
 // overall skill level (0..100) from global rank, so #1 ~ 100 and a 5-digit sits mid-scale
@@ -109,21 +124,20 @@ function rankLevel(globalRank: number | null): number {
 const SKILL_SPREAD = 46;
 
 type SkillInputs = {
-  sr: number;
-  bpm: number;
+  aimDiff: number;
+  speedDiff: number;
   length: number;
   ar: number;
   acc: number;
   sliderRatio: number;
 };
 
-// anchor every axis to the player's rank, then spread by their map/mod tendencies
 function computeSkill(globalRank: number | null, m: SkillInputs): SkillDimensions {
   const t = {
-    aim: frac(m.sr, 3.0, 8.0),
-    speed: frac(m.bpm, 140, 240),
+    aim: frac(m.aimDiff, 2.0, 4.2),
+    speed: frac(m.speedDiff, 1.8, 3.6),
     stamina: frac(m.length, 30, 240),
-    reading: frac(m.ar, 8.0, 10.5),
+    reading: frac(m.ar, 8.0, 10.8),
     accuracy: frac(m.acc, 94, 99.8),
     tech: frac(m.sliderRatio, 0.25, 0.6),
   };
@@ -145,8 +159,6 @@ const HIGH_CIRCLE_RATIO = 0.62;
 const SLIDER_HEAVY_RATIO = 0.45;
 const PRECISION_ACC = 98.5;
 const LONG_MAP_SEC = 150;
-
-// minimum lead a dimension needs over the average to claim a specialty
 const SPECIALTY_LEAD = 14;
 
 // label off the strongest skill dimension, not brittle map-attribute cutoffs
@@ -162,11 +174,32 @@ function deriveLabel(skill: SkillDimensions): string {
   return value - avg >= SPECIALTY_LEAD ? name : "All-rounder";
 }
 
+function mmss(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+}
+
+function sliderRatioOf(score: OsuScore): number {
+  const b = score.beatmap;
+  return b.count_sliders / Math.max(1, b.count_circles + b.count_sliders);
+}
+
+function highlight(play: EnrichedPlay, metric: string): MapHighlight {
+  const acr = acronyms(play.score.mods);
+  const stars = play.attr?.star_rating ?? play.score.beatmap.difficulty_rating;
+  return {
+    title: play.score.beatmapset?.title ?? "Unknown",
+    version: play.score.beatmap.version,
+    mods: acr.length ? `+${acr.join("")}` : "NM",
+    stars: Math.round(stars * 100) / 100,
+    metric,
+  };
+}
+
 export function analyzeTopPlays(
-  scores: OsuScore[],
+  plays: EnrichedPlay[],
   globalRank: number | null,
 ): PlaystyleAnalysis {
-  if (scores.length === 0) return EMPTY;
+  if (plays.length === 0) return EMPTY;
   const now = Date.now();
 
   const mods: Record<string, number> = {};
@@ -179,12 +212,14 @@ export function analyzeTopPlays(
   const lengths: number[] = [];
   const accs: number[] = [];
   const pps: number[] = [];
+  const aimVals: number[] = [];
+  const speedVals: number[] = [];
   const missCounts: number[] = [];
   const ages: number[] = [];
   let circles = 0;
   let sliders = 0;
 
-  for (const score of scores) {
+  for (const { score, attr } of plays) {
     const acr = acronyms(score.mods);
     const rate = rateOf(acr);
     for (const m of acr) mods[m] = (mods[m] ?? 0) + 1;
@@ -192,14 +227,16 @@ export function analyzeTopPlays(
     combos[comboKey] = (combos[comboKey] ?? 0) + 1;
 
     const b = score.beatmap;
-    srs.push(b.difficulty_rating);
+    srs.push(attr?.star_rating ?? b.difficulty_rating);
     bpms.push(b.bpm * rate);
-    ars.push(b.ar);
+    ars.push(attr?.approach_rate ?? b.ar);
     css.push(b.cs);
-    ods.push(b.accuracy);
+    ods.push(attr?.overall_difficulty ?? b.accuracy);
     lengths.push(b.hit_length / rate);
     accs.push(score.accuracy * 100);
     if (score.pp != null) pps.push(score.pp);
+    if (attr?.aim_difficulty != null) aimVals.push(attr.aim_difficulty);
+    if (attr?.speed_difficulty != null) speedVals.push(attr.speed_difficulty);
     missCounts.push(missesOf(score.statistics));
     ages.push((now - new Date(score.created_at).getTime()) / 86_400_000);
     circles += b.count_circles;
@@ -210,32 +247,60 @@ export function analyzeTopPlays(
   const srSpread = spread(srs);
   const bpmSpread = spread(bpms);
   const arSpread = spread(ars);
-  const csSpread = spread(css);
   const lengthSpread = spread(lengths);
   const avgAcc = mean(accs);
 
   const modList: ModUse[] = Object.entries(mods)
-    .map(([mod, count]) => ({ mod, count, pct: Math.round((count / scores.length) * 100) }))
+    .map(([mod, count]) => ({ mod, count, pct: Math.round((count / plays.length) * 100) }))
     .sort((a, b) => b.count - a.count);
 
   const skill = computeSkill(globalRank, {
-    sr: srSpread.median,
-    bpm: bpmSpread.median,
+    aimDiff: aimVals.length ? median(aimVals) : srSpread.median * 0.62,
+    speedDiff: speedVals.length ? median(speedVals) : srSpread.median * 0.55,
     length: lengthSpread.median,
     ar: arSpread.median,
     acc: avgAcc,
     sliderRatio: 1 - circleRatio,
   });
 
+  const argmax = (valueFn: (p: EnrichedPlay) => number | undefined) => {
+    let best: EnrichedPlay | null = null;
+    let bestV = -Infinity;
+    for (const p of plays) {
+      const v = valueFn(p);
+      if (v != null && v > bestV) {
+        bestV = v;
+        best = p;
+      }
+    }
+    return best ? { play: best, value: bestV } : null;
+  };
+
+  const aimH = argmax((p) => p.attr?.aim_difficulty);
+  const speedH = argmax((p) => p.attr?.speed_difficulty);
+  const stamH = argmax((p) => p.score.beatmap.hit_length / rateOf(acronyms(p.score.mods)));
+  const readH = argmax((p) => p.attr?.approach_rate ?? p.score.beatmap.ar);
+  const accH = argmax((p) => p.score.accuracy);
+  const techH = argmax((p) => sliderRatioOf(p.score));
+
+  const highlights: Partial<Record<keyof SkillDimensions, MapHighlight>> = {};
+  if (aimH) highlights.aim = highlight(aimH.play, `aim ${aimH.value.toFixed(2)}`);
+  if (speedH) highlights.speed = highlight(speedH.play, `speed ${speedH.value.toFixed(2)}`);
+  if (stamH) highlights.stamina = highlight(stamH.play, `${mmss(stamH.value)} drain`);
+  if (readH) highlights.reading = highlight(readH.play, `AR ${readH.value.toFixed(1)}`);
+  if (accH) highlights.accuracy = highlight(accH.play, `${(accH.value * 100).toFixed(2)}% acc`);
+  if (techH) highlights.tech = highlight(techH.play, `${Math.round(techH.value * 100)}% sliders`);
+
   return {
-    sampleSize: scores.length,
+    sampleSize: plays.length,
     label: deriveLabel(skill),
     traits: deriveTraits(bpmSpread.median, circleRatio, lengthSpread.median, avgAcc, modList),
     skill,
+    highlights,
     sr: srSpread,
     bpm: bpmSpread,
     ar: arSpread,
-    cs: csSpread,
+    cs: spread(css),
     od: spread(ods),
     lengthSec: lengthSpread,
     circleRatio,
@@ -250,7 +315,7 @@ export function analyzeTopPlays(
       median: pps.length ? median(pps) : 0,
       floor: pps.length ? Math.min(...pps) : 0,
     },
-    noMissRate: missCounts.filter((m) => m === 0).length / scores.length,
+    noMissRate: missCounts.filter((m) => m === 0).length / plays.length,
     avgMisses: mean(missCounts),
     mods: modList,
     modCombos: Object.entries(combos)

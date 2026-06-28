@@ -48,9 +48,9 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
 
       <div className="mt-4 grid gap-6 md:grid-cols-[260px_1fr]">
         <div>
-          <SkillRadar skill={p.skill} />
+          <SkillRadar skill={p.skill} highlights={p.highlights} />
           <p className="mt-1 text-center text-[11px] text-white/35">
-            scaled to your global rank · 100 ≈ #1
+            scaled to your global rank · 100 ≈ #1 · hover an axis
           </p>
         </div>
 
@@ -94,12 +94,12 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Metric label="Star rating" value={spreadText(p.sr, 2)} />
+        <Metric label="Star rating (modded)" value={spreadText(p.sr, 2)} />
         <Metric label="BPM (effective)" value={spreadText(p.bpm)} />
         <Metric label="Map length" value={lengthText(p.lengthSec)} />
-        <Metric label="Approach rate" value={spreadText(p.ar, 1)} />
+        <Metric label="Approach rate (modded)" value={spreadText(p.ar, 1)} />
         <Metric label="Circle size" value={spreadText(p.cs, 1)} />
-        <Metric label="Overall diff" value={spreadText(p.od, 1)} />
+        <Metric label="Overall diff (modded)" value={spreadText(p.od, 1)} />
       </div>
 
       <div className="mt-4">
