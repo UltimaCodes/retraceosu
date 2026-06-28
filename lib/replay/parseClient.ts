@@ -1,9 +1,10 @@
 import type { ParsedSummary, ParseResponse } from "./types";
 
-// runs the decode off the main thread so the UI never blocks on big replays
+// runs the decode off the main thread so the UI never blocks on big replays.
+// osuText is optional — without it the worker fetches the beatmap by its MD5.
 export function parseReplay(
-  osuText: string,
   osrBuffer: ArrayBuffer,
+  osuText?: string,
 ): Promise<ParsedSummary> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL("./parse.worker.ts", import.meta.url), {

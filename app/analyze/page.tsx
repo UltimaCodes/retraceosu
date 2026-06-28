@@ -27,14 +27,22 @@ function Big({ label, value, accent }: { label: string; value: string; accent?: 
   );
 }
 
-function FilePill({ kind, file }: { kind: string; file: File | null }) {
+function FilePill({
+  kind,
+  file,
+  emptyLabel = "none",
+}: {
+  kind: string;
+  file: File | null;
+  emptyLabel?: string;
+}) {
   return (
     <span
       className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
         file ? "bg-pink/15 text-pink" : "bg-black/20 text-white/40"
       }`}
     >
-      {kind}: {file ? file.name : "none"}
+      {kind}: {file ? file.name : emptyLabel}
     </span>
   );
 }
@@ -55,13 +63,14 @@ export default function AnalyzePage() {
   }
 
   async function run() {
-    if (!osu || !osr) return;
+    if (!osr) return;
     setBusy(true);
     setError(null);
     setSummary(null);
     try {
-      const [osuText, osrBuffer] = await Promise.all([osu.text(), osr.arrayBuffer()]);
-      setSummary(await parseReplay(osuText, osrBuffer));
+      const osrBuffer = await osr.arrayBuffer();
+      const osuText = osu ? await osu.text() : undefined;
+      setSummary(await parseReplay(osrBuffer, osuText));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -85,7 +94,8 @@ export default function AnalyzePage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <h1 className="font-display text-2xl font-bold text-white">Replay analysis</h1>
         <p className="mt-1 text-sm text-white/50">
-          Drop a replay (.osr) and its beatmap (.osu). Everything is parsed in your browser.
+          Drop a replay (.osr) — the beatmap is fetched automatically from its ID. Parsing
+          runs entirely in your browser.
         </p>
 
         <div
@@ -103,7 +113,10 @@ export default function AnalyzePage() {
             drag ? "border-pink bg-pink/5" : "border-line bg-surface"
           }`}
         >
-          <p className="text-white/70">Drag & drop your .osr and .osu here</p>
+          <p className="text-white/70">
+            Drag & drop your .osr here
+            <span className="text-white/40"> (.osu optional — auto-fetched)</span>
+          </p>
           <div className="mt-3 flex flex-wrap justify-center gap-3 text-sm">
             <label className="cursor-pointer rounded-lg bg-black/30 px-3 py-1.5 text-white/70 hover:text-white">
               Choose .osu
@@ -125,15 +138,15 @@ export default function AnalyzePage() {
             </label>
           </div>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <FilePill kind=".osu" file={osu} />
             <FilePill kind=".osr" file={osr} />
+            <FilePill kind=".osu" file={osu} emptyLabel="auto-fetch" />
           </div>
         </div>
 
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={run}
-            disabled={!osu || !osr || busy}
+            disabled={!osr || busy}
             className="rounded-lg bg-pink px-5 py-2.5 font-display font-bold text-white transition hover:bg-pink-dark disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? "Parsing…" : "Analyze"}

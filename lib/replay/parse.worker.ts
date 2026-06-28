@@ -9,9 +9,22 @@ import { HitResult, type Beatmap, type Score } from "osu-classes";
 import type { HitCounts, ParsedSummary } from "./types";
 import { reconstructFromDecoded } from "./fromDecoded";
 
-type Request = { osuText: string; osrBuffer: ArrayBuffer };
+type Request = { osuText?: string; osrBuffer: ArrayBuffer };
 
 const ctx = self as unknown as Worker;
+
+// same-origin call to our proxy; the httpOnly osu token rides along automatically
+async function fetchBeatmap(md5: string): Promise<string> {
+  const res = await fetch(`/api/beatmap?checksum=${encodeURIComponent(md5)}`);
+  if (!res.ok) {
+    if (res.status === 401)
+      throw new Error("Sign in with osu! to auto-fetch the beatmap, or drop the .osu yourself.");
+    if (res.status === 404)
+      throw new Error("Couldn't find this map online (unsubmitted?). Drop the .osu yourself.");
+    throw new Error("Beatmap fetch failed — drop the .osu yourself.");
+  }
+  return (await res.json()).osu as string;
+}
 
 function readStats(score: Score): { counts: HitCounts; raw: Record<string, number> } {
   const raw: Record<string, number> = {};
@@ -69,11 +82,12 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
 
 ctx.onmessage = async (e: MessageEvent<Request>) => {
   try {
-    const beatmap = new BeatmapDecoder().decodeFromString(e.data.osuText);
     const score = await new ScoreDecoder().decodeFromBuffer(
       new Uint8Array(e.data.osrBuffer),
       true,
     );
+    const osuText = e.data.osuText ?? (await fetchBeatmap(score.info.beatmapHashMD5));
+    const beatmap = new BeatmapDecoder().decodeFromString(osuText);
     ctx.postMessage({ ok: true, summary: summarize(beatmap, score) });
   } catch (err) {
     ctx.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });
