@@ -1,6 +1,5 @@
 import type { Beatmap, Score } from "osu-classes";
 import { StandardRuleset, type StandardBeatmap } from "osu-standard-stable";
-import { clockRate, modsFromBitmask } from "./mods";
 import { judgePlay } from "./judge";
 import type { Frame, Mechanics } from "./reconstruct";
 
@@ -8,7 +7,6 @@ import type { Frame, Mechanics } from "./reconstruct";
 // objects exist), then runs the full-play judgement.
 export function reconstructFromDecoded(beatmap: Beatmap, score: Score): Mechanics {
   const raw = Number(score.info.rawMods);
-  const rate = clockRate(modsFromBitmask(raw));
 
   const ruleset = new StandardRuleset();
   const standard = ruleset.applyToBeatmapWithMods(
@@ -25,5 +23,5 @@ export function reconstructFromDecoded(beatmap: Beatmap, score: Score): Mechanic
     return { time: lf.startTime, x: lf.position.x, y: lf.position.y, keys: lf.buttonState };
   });
 
-  return judgePlay(standard, frames, rate);
+  return judgePlay(standard, frames);
 }

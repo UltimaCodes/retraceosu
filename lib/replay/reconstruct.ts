@@ -26,7 +26,7 @@ export type Mechanics = {
   insights: string[]; // plain-language findings derived from the above
 };
 
-export type ReconstructOptions = { od: number; cs: number; clockRate: number };
+export type ReconstructOptions = { od: number; cs: number };
 
 const KEY_MASK = 1 | 2 | 4 | 8; // M1 M2 K1 K2, ignoring smoke
 
@@ -34,12 +34,13 @@ export function circleRadius(cs: number): number {
   return 54.4 - 4.48 * cs;
 }
 
-// stable hit windows (ms) for a given OD, scaled into map time by the clock rate
-export function hitWindows(od: number, clockRate: number) {
+// stable hit windows (ms) for a given OD. Frames and objects are both in map
+// time, and DT/HT errors are already inflated there, so windows are NOT rate-scaled.
+export function hitWindows(od: number) {
   return {
-    great: (80 - 6 * od) / clockRate,
-    ok: (140 - 8 * od) / clockRate,
-    meh: (200 - 10 * od) / clockRate,
+    great: 80 - 6 * od,
+    ok: 140 - 8 * od,
+    meh: 200 - 10 * od,
   };
 }
 
@@ -72,7 +73,7 @@ export function reconstruct(
   frames: Frame[],
   opts: ReconstructOptions,
 ): { mechanics: Mechanics; results: ObjectResult[] } {
-  const w = hitWindows(opts.od, opts.clockRate);
+  const w = hitWindows(opts.od);
   const radius = circleRadius(opts.cs);
   const r2 = radius * radius;
   const edges = pressEdges(frames);

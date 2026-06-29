@@ -65,7 +65,7 @@ function fracJudge(hit: number, total: number): Judgement {
 
 // full-play judgement: circles + slider follow-circle + spinner rotations.
 // UR / hit errors come from the tap engine (circles + slider heads).
-export function judgePlay(beatmap: StandardBeatmap, frames: Frame[], clockRate: number): Mechanics {
+export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): Mechanics {
   const od = beatmap.difficulty.overallDifficulty;
   const cs = beatmap.difficulty.circleSize;
   const followR2 = (circleRadius(cs) * 2.4) ** 2;
@@ -84,7 +84,7 @@ export function judgePlay(beatmap: StandardBeatmap, frames: Frame[], clockRate: 
     }
   }
 
-  const { mechanics, results } = reconstruct(taps, frames, { od, cs, clockRate });
+  const { mechanics, results } = reconstruct(taps, frames, { od, cs });
 
   let c300 = 0;
   let c100 = 0;
