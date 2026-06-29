@@ -13,6 +13,10 @@ export type ObjectResult = {
   error: number | null; // signed ms, + = late, null = miss
 };
 
+export type Section = { fromMs: number; toMs: number; ur: number; misses: number };
+export type PatternStat = { name: string; ur: number; count: number };
+export type Coaching = { strengths: string[]; weaknesses: string[]; practice: string[] };
+
 export type Mechanics = {
   ur: number; // unstable rate = stdev(errors) * 10
   meanError: number; // + late / - early
@@ -24,6 +28,9 @@ export type Mechanics = {
   hitErrors: { time: number; error: number }[];
   objects: number; // tap objects considered
   insights: string[]; // plain-language findings derived from the above
+  sections: Section[]; // UR / misses over equal time slices
+  patterns: PatternStat[]; // UR grouped by movement pattern
+  coaching: Coaching; // synthesised strengths / weaknesses / practice
 };
 
 export type ReconstructOptions = { od: number; cs: number };
@@ -194,5 +201,13 @@ function aggregate(results: ObjectResult[]): Mechanics {
     hitErrors,
     objects: results.length,
     insights: deriveInsights(hitErrors, mean, earlyRate, miss),
+    sections: [],
+    patterns: [],
+    coaching: { strengths: [], weaknesses: [], practice: [] },
   };
+}
+
+// shared UR helper for downstream analysis (sections / patterns)
+export function unstableRate(errors: number[]): number {
+  return urOf(errors);
 }

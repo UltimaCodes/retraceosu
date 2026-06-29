@@ -15,6 +15,7 @@ import {
   type Mechanics,
   type TapObject,
 } from "./reconstruct";
+import { computePatterns, computeSections, deriveCoaching } from "./analysis";
 
 const KEY_MASK = 1 | 2 | 4 | 8;
 
@@ -134,6 +135,9 @@ export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): Mechanics 
     );
   }
 
+  const sections = computeSections(results);
+  const patterns = computePatterns(taps, results, circleRadius(cs));
+
   return {
     ...mechanics,
     count300: c300,
@@ -141,5 +145,8 @@ export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): Mechanics 
     count50: c50,
     countMiss: miss,
     objects: beatmap.hitObjects.length,
+    sections,
+    patterns,
+    coaching: deriveCoaching(mechanics.meanError, sections, patterns),
   };
 }

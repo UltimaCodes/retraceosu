@@ -33,6 +33,41 @@ function Big({ label, value, accent }: { label: string; value: string; accent?: 
   );
 }
 
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>
+  );
+}
+
+function CoachCol({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: "good" | "bad" | "pink";
+}) {
+  const dot = tone === "good" ? "text-[#8be04a]" : tone === "bad" ? "text-red-400" : "text-pink";
+  return (
+    <div>
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-white/40">{title}</h3>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-white/30">—</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {items.map((t, i) => (
+            <li key={i} className="flex gap-2 text-sm text-white/75">
+              <span className={dot}>•</span>
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function FilePill({
   kind,
   file,
@@ -254,12 +289,75 @@ export default function AnalyzePage() {
               </ul>
             )}
             <p className="mt-4 text-[11px] text-white/35">
-              UR and hit errors are reconstructed from your cursor stream vs the hit
-              objects (circles + slider heads). Slider ticks and spinners aren&apos;t
-              judged yet, so reconstructed counts can differ from the replay&apos;s stored
-              totals on slider-heavy maps.
+              UR and hit errors come from your cursor stream vs the hit objects;
+              sliders are judged by follow-circle and spinners by spin count, so
+              reconstructed totals track the replay closely.
             </p>
           </section>
+
+          {summary.mechanics.sections.length > 0 && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>Consistency over the map</SectionTitle>
+              <div className="mt-4 flex h-24 items-end gap-1">
+                {summary.mechanics.sections.map((s, i) => {
+                  const max = Math.max(...summary.mechanics.sections.map((x) => x.ur), 1);
+                  return (
+                    <div
+                      key={i}
+                      className={`flex-1 rounded-t ${s.misses > 0 ? "bg-red-400" : "bg-pink"}`}
+                      style={{ height: `${Math.max((s.ur / max) * 100, 3)}%` }}
+                      title={`${Math.round(s.fromMs / 1000)}s · UR ${s.ur.toFixed(0)}${s.misses ? ` · ${s.misses} miss` : ""}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="mt-1 flex justify-between text-[11px] text-white/35">
+                <span>start</span>
+                <span>UR per section · red = misses</span>
+                <span>end</span>
+              </div>
+            </section>
+          )}
+
+          {summary.mechanics.patterns.length > 0 && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>By pattern</SectionTitle>
+              <div className="mt-4 space-y-2.5">
+                {summary.mechanics.patterns.map((p) => {
+                  const max = Math.max(...summary.mechanics.patterns.map((x) => x.ur), 1);
+                  return (
+                    <div key={p.name} className="flex items-center gap-3">
+                      <span className="w-28 shrink-0 text-sm text-white/60 sm:w-32">{p.name}</span>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-black/30">
+                        <div className="h-full rounded-full bg-pink" style={{ width: `${(p.ur / max) * 100}%` }} />
+                      </div>
+                      <span className="w-16 shrink-0 text-right font-display text-sm text-white">
+                        {p.ur.toFixed(0)}
+                      </span>
+                      <span className="w-8 shrink-0 text-right text-[11px] text-white/35">×{p.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {summary.mechanics.coaching.strengths.length +
+            summary.mechanics.coaching.weaknesses.length +
+            summary.mechanics.coaching.practice.length >
+            0 && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>Coaching review</SectionTitle>
+              <div className="mt-4 grid gap-5 sm:grid-cols-3">
+                <CoachCol title="Strengths" items={summary.mechanics.coaching.strengths} tone="good" />
+                <CoachCol title="Weak points" items={summary.mechanics.coaching.weaknesses} tone="bad" />
+                <CoachCol title="Practice" items={summary.mechanics.coaching.practice} tone="pink" />
+              </div>
+              <p className="mt-4 text-[11px] text-white/35">
+                Based on this single replay. Analyze more to build a fuller picture.
+              </p>
+            </section>
+          )}
           </>
         )}
       </main>
