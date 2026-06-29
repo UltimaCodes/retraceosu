@@ -24,8 +24,34 @@
 
 body {
   background:
-    radial-gradient(1100px 520px at 50% -8%, #46303c 0%, transparent 62%),
-    var(--background);
+    radial-gradient(130% 90% at 50% 0%, #271c22 0%, #160f14 60%);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* drifting background triangles (osu! motif) */
+.bg-tri {
+  position: absolute;
+  top: 0;
+  background: var(--pink);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  will-change: transform;
+  animation-name: tri-rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes tri-rise {
+  from {
+    transform: translateY(108vh);
+  }
+  to {
+    transform: translateY(-25vh);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-tri {
+    animation: none;
+  }
 }

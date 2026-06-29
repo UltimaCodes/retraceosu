@@ -23,6 +23,8 @@ export type Profile = {
   levelProgress: number;
   grades: OsuGradeCounts;
   rankHistory: number[]; // oldest -> newest global rank
+  scoresFirst: number;
+  medals: number;
 };
 
 export function shapeProfile(me: OsuMe): Profile {
@@ -50,5 +52,7 @@ export function shapeProfile(me: OsuMe): Profile {
     levelProgress: s.level.progress,
     grades: s.grade_counts,
     rankHistory: me.rank_history?.data ?? [],
+    scoresFirst: me.scores_first_count ?? 0,
+    medals: me.user_achievements?.length ?? 0,
   };
 }

@@ -42,36 +42,35 @@ export function ProfileCard({ profile }: { profile: Profile }) {
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-lg shadow-black/30">
       <div
-        className="relative h-36 bg-cover bg-center"
+        className="relative h-32 bg-cover bg-center sm:h-44"
         style={{
           backgroundImage: profile.coverUrl
-            ? `linear-gradient(to top, #2a2227 4%, transparent 70%), url(${profile.coverUrl})`
+            ? `linear-gradient(to top, rgba(42,34,39,0.7), transparent 55%), url(${profile.coverUrl})`
             : "linear-gradient(120deg,#ff66ab33,#7d4fff33)",
         }}
-      />
-      <div className="flex flex-wrap items-end gap-4 px-4 sm:px-6 -mt-12">
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={profile.avatarUrl}
           alt={profile.username}
-          className="h-24 w-24 rounded-xl border-4 border-surface bg-surface object-cover"
+          className="absolute -bottom-11 left-5 h-24 w-24 rounded-xl border-4 border-surface bg-surface object-cover"
         />
-        <div className="min-w-0 pb-1">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-2xl font-bold break-words text-white sm:text-3xl">
-              {profile.username}
-            </h2>
-            {profile.isSupporter && (
-              <span className="text-pink" title="osu!supporter">
-                ♥
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-white/50">
-            <span className="mr-1">{flagEmoji(profile.countryCode)}</span>
-            {profile.countryName} · joined {formatJoinDate(profile.joinDate)}
-          </p>
+      </div>
+      <div className="min-w-0 pl-32 pr-4 pt-2.5 sm:pl-36 sm:pr-6">
+        <div className="flex items-center gap-2">
+          <h2 className="font-display text-2xl font-bold break-words text-white sm:text-3xl">
+            {profile.username}
+          </h2>
+          {profile.isSupporter && (
+            <span className="text-pink" title="osu!supporter">
+              ♥
+            </span>
+          )}
         </div>
+        <p className="text-sm text-white/50">
+          <span className="mr-1">{flagEmoji(profile.countryCode)}</span>
+          {profile.countryName} · joined {formatJoinDate(profile.joinDate)}
+        </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-x-6 gap-y-4 px-4 py-5 sm:gap-x-10 sm:px-6">
@@ -119,8 +118,8 @@ export function ProfileCard({ profile }: { profile: Profile }) {
         <Stat label="Max combo" value={formatNumber(profile.maxCombo)} />
         <Stat label="Ranked score" value={formatCompact(profile.rankedScore)} />
         <Stat label="Total hits" value={formatCompact(profile.totalHits)} />
-        <Stat label="Replays watched" value={formatNumber(profile.replaysWatched)} />
-        <Stat label="Level" value={`${profile.level}`} />
+        <Stat label="#1 ranks" value={formatNumber(profile.scoresFirst)} />
+        <Stat label="Medals" value={formatNumber(profile.medals)} />
       </div>
 
       <div className="px-4 sm:px-6 pb-6">

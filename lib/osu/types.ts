@@ -38,6 +38,8 @@ export type OsuMe = {
   join_date: string;
   statistics: OsuStatistics;
   rank_history?: OsuRankHistory;
+  scores_first_count?: number;
+  user_achievements?: { achievement_id: number }[];
 };
 
 export type OsuBeatmap = {
