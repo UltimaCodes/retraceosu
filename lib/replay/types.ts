@@ -32,10 +32,31 @@ export type ParsedReplay = {
 
 import type { Mechanics } from "./reconstruct";
 
+export type ViewerObject = {
+  t: number;
+  x: number;
+  y: number;
+  type: number; // 0 circle, 1 slider, 2 spinner
+  ex?: number; // slider end position
+  ey?: number;
+  end?: number; // slider/spinner end time
+};
+
+export type ViewerFrame = { t: number; x: number; y: number; k: number };
+
+export type ViewerData = {
+  objects: ViewerObject[];
+  frames: ViewerFrame[];
+  radius: number;
+  preempt: number; // approach time (ms)
+  lengthMs: number;
+};
+
 export type ParsedSummary = {
   beatmap: ParsedBeatmap;
   replay: ParsedReplay;
   mechanics: Mechanics;
+  viewer: ViewerData;
 };
 
 export type ParseResponse =

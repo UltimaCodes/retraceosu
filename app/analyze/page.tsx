@@ -6,6 +6,7 @@ import { parseReplay } from "@/lib/replay/parseClient";
 import type { ParsedSummary } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { HitErrorChart } from "@/app/components/HitErrorChart";
+import { ReplayViewer } from "@/app/components/ReplayViewer";
 
 // round to 1 dp, dropping a trailing .0 (e.g. 8.800001 -> "8.8", 4 -> "4")
 function r1(n: number): string {
@@ -246,6 +247,15 @@ export default function AnalyzePage() {
               </div>
             </section>
           </div>
+
+          {summary.viewer.frames.length > 0 && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>Replay viewer</SectionTitle>
+              <div className="mt-4">
+                <ReplayViewer viewer={summary.viewer} hitErrors={summary.mechanics.hitErrors} />
+              </div>
+            </section>
+          )}
 
           <section className="mt-4 rounded-xl border border-line bg-surface p-6">
             <div className="flex items-baseline justify-between">

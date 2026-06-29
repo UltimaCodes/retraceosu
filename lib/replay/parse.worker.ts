@@ -6,8 +6,9 @@ import {
   SpinnableObject,
 } from "osu-parsers";
 import { HitResult, type Beatmap, type Score } from "osu-classes";
-import type { HitCounts, ParsedSummary } from "./types";
-import { reconstructFromDecoded } from "./fromDecoded";
+import type { HitCounts, ParsedSummary, ViewerData } from "./types";
+import { analyzeFromDecoded } from "./fromDecoded";
+import type { Mechanics } from "./reconstruct";
 import { effectiveDifficulty, modsFromBitmask, modsToString } from "./mods";
 
 type Request = { osuText?: string; osrBuffer: ArrayBuffer };
@@ -43,7 +44,12 @@ function readStats(score: Score): { counts: HitCounts; raw: Record<string, numbe
   };
 }
 
-function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
+function summarize(
+  beatmap: Beatmap,
+  score: Score,
+  mechanics: Mechanics,
+  viewer: ViewerData,
+): ParsedSummary {
   const objects = beatmap.hitObjects;
   const last = objects[objects.length - 1];
   const { counts, raw } = readStats(score);
@@ -83,7 +89,8 @@ function summarize(beatmap: Beatmap, score: Score): ParsedSummary {
       beatmapMD5: score.info.beatmapHashMD5,
       rawStats: raw,
     },
-    mechanics: reconstructFromDecoded(beatmap, score),
+    mechanics,
+    viewer,
   };
 }
 
@@ -105,7 +112,8 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
     if (beatmap.mode !== 0) {
       throw new Error("Retrace only supports osu!standard beatmaps.");
     }
-    ctx.postMessage({ ok: true, summary: summarize(beatmap, score) });
+    const { mechanics, viewer } = analyzeFromDecoded(beatmap, score);
+    ctx.postMessage({ ok: true, summary: summarize(beatmap, score, mechanics, viewer) });
   } catch (err) {
     ctx.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
