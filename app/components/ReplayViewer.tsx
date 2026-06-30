@@ -71,8 +71,9 @@ export function ReplayViewer({
     if (!playing) return;
     let last = performance.now();
     let raf = 0;
+    const rate = viewer.rate || 1;
     const step = (ts: number) => {
-      const nt = tRef.current + (ts - last);
+      const nt = tRef.current + (ts - last) * rate;
       last = ts;
       if (nt >= length) {
         tRef.current = length;
@@ -86,7 +87,7 @@ export function ReplayViewer({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [playing, length]);
+  }, [playing, length, viewer.rate]);
 
   useEffect(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -188,6 +189,11 @@ export function ReplayViewer({
           }}
           className="h-1 flex-1 cursor-pointer accent-pink"
         />
+        {viewer.rate !== 1 && (
+          <span className="shrink-0 rounded bg-pink/15 px-1.5 py-0.5 text-[11px] font-semibold text-pink">
+            {viewer.rate}×
+          </span>
+        )}
         <span className="w-24 shrink-0 text-right font-display text-xs tabular-nums text-white/60">
           {formatDuration(t / 1000)} / {formatDuration(length / 1000)}
         </span>

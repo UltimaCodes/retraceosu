@@ -7,6 +7,7 @@ import {
   type StandardBeatmap,
 } from "osu-standard-stable";
 import { judgePlay } from "./judge";
+import { clockRate, modsFromBitmask } from "./mods";
 import { circleRadius, type Frame, type Mechanics } from "./reconstruct";
 import type { ViewerData, ViewerObject } from "./types";
 
@@ -16,7 +17,7 @@ function arToPreempt(ar: number): number {
   return ar <= 5 ? 1800 - 120 * ar : 1200 - 150 * (ar - 5);
 }
 
-function buildViewer(beatmap: StandardBeatmap, frames: Frame[]): ViewerData {
+function buildViewer(beatmap: StandardBeatmap, frames: Frame[], rate: number): ViewerData {
   const objects: ViewerObject[] = beatmap.hitObjects.map((o) => {
     const base: ViewerObject = {
       t: Math.round(o.startTime),
@@ -45,6 +46,7 @@ function buildViewer(beatmap: StandardBeatmap, frames: Frame[]): ViewerData {
     radius: circleRadius(beatmap.difficulty.circleSize),
     preempt: arToPreempt(beatmap.difficulty.approachRate),
     lengthMs: last ? (last.end ?? last.t) : 0,
+    rate,
   };
 }
 
@@ -68,5 +70,9 @@ export function analyzeFromDecoded(
     return { time: lf.startTime, x: lf.position.x, y: lf.position.y, keys: lf.buttonState };
   });
 
-  return { mechanics: judgePlay(standard, frames), viewer: buildViewer(standard, frames) };
+  const rate = clockRate(modsFromBitmask(Number(score.info.rawMods)));
+  return {
+    mechanics: judgePlay(standard, frames),
+    viewer: buildViewer(standard, frames, rate),
+  };
 }

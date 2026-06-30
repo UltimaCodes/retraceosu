@@ -48,8 +48,9 @@ export type ViewerData = {
   objects: ViewerObject[];
   frames: ViewerFrame[];
   radius: number;
-  preempt: number; // approach time (ms)
+  preempt: number; // approach time (ms, map-time)
   lengthMs: number;
+  rate: number; // playback clock rate: DT 1.5, HT 0.75, else 1
 };
 
 export type ParsedSummary = {
