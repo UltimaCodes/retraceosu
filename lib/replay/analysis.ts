@@ -33,7 +33,11 @@ export function computeSections(results: ObjectResult[], buckets = 10): Section[
   return sections;
 }
 
-// group tap UR by movement pattern (tempo + spacing relative to the previous tap)
+// group tap UR by movement pattern. Spacing (relative to circle size) decides
+// aim vs not; tempo splits streams from bursts. A pattern needs a real sample
+// to appear, so a handful of stray notes don't get reported.
+const MIN_PATTERN = 12;
+
 export function computePatterns(
   taps: TapObject[],
   results: ObjectResult[],
@@ -41,7 +45,7 @@ export function computePatterns(
 ): PatternStat[] {
   const diameter = radius * 2;
   const groups: Record<string, number[]> = {
-    "Streams (1/4)": [],
+    Streams: [],
     Bursts: [],
     Jumps: [],
     "Spaced control": [],
@@ -50,16 +54,17 @@ export function computePatterns(
     const err = results[i]?.error;
     if (err == null) continue; // only landed hits carry timing
     const gap = taps[i].time - taps[i - 1].time;
-    const dist = Math.hypot(taps[i].x - taps[i - 1].x, taps[i].y - taps[i - 1].y);
+    const spacing = Math.hypot(taps[i].x - taps[i - 1].x, taps[i].y - taps[i - 1].y) / diameter;
+    const fast = gap <= 130;
     let name: keyof typeof groups;
-    if (gap <= 130 && dist <= diameter * 1.2) name = "Streams (1/4)";
-    else if (gap <= 130) name = "Bursts";
-    else if (dist >= diameter * 2.2) name = "Jumps";
+    if (spacing >= 2.4) name = "Jumps";
+    else if (fast && spacing < 1.3) name = "Streams";
+    else if (fast) name = "Bursts";
     else name = "Spaced control";
     groups[name].push(err);
   }
   return Object.entries(groups)
-    .filter(([, e]) => e.length >= 5)
+    .filter(([, e]) => e.length >= MIN_PATTERN)
     .map(([name, e]) => ({ name, ur: unstableRate(e), count: e.length }))
     .sort((a, b) => b.count - a.count);
 }
@@ -80,17 +85,29 @@ export function deriveCoaching(
   const weaknesses: string[] = [];
   const practice: string[] = [];
 
-  if (patterns.length >= 2) {
-    const sorted = [...patterns].sort((a, b) => a.ur - b.ur);
+  // only compare patterns that make up a real share of this map, so a few stray
+  // stream notes on an aim map don't trigger "practice streams"
+  const totalCount = patterns.reduce((a, p) => a + p.count, 0);
+  const eligible = patterns.filter(
+    (p) => p.count >= Math.max(20, totalCount * 0.18),
+  );
+  if (eligible.length >= 2) {
+    const sorted = [...eligible].sort((a, b) => a.ur - b.ur);
     const best = sorted[0];
     const worst = sorted[sorted.length - 1];
-    if (worst.ur > best.ur * 1.2) {
+    if (worst.ur > best.ur * 1.25) {
       weaknesses.push(
-        `${worst.name} are your weakest pattern (UR ${worst.ur.toFixed(0)} vs ${best.ur.toFixed(0)} on ${best.name.toLowerCase()}).`,
+        `${worst.name} are your weakest pattern here (UR ${worst.ur.toFixed(0)} vs ${best.ur.toFixed(0)} on ${best.name.toLowerCase()}).`,
       );
-      strengths.push(`${best.name} are your strongest pattern (UR ${best.ur.toFixed(0)}).`);
+      strengths.push(`${best.name} are your strongest (UR ${best.ur.toFixed(0)}).`);
       practice.push(practiceFor(worst.name));
+    } else {
+      strengths.push("Your timing holds up evenly across pattern types.");
     }
+  } else if (eligible.length === 1) {
+    strengths.push(
+      `This map is mostly ${eligible[0].name.toLowerCase()} — your UR there is ${eligible[0].ur.toFixed(0)}.`,
+    );
   }
 
   if (Math.abs(meanError) >= 6) {
