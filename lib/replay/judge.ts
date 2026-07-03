@@ -6,6 +6,7 @@ import {
   SpinnerBonusTick,
   SpinnerTick,
   type StandardBeatmap,
+  type StandardHitObject,
 } from "osu-standard-stable";
 import {
   circleRadius,
@@ -15,9 +16,16 @@ import {
   type Mechanics,
   type TapObject,
 } from "./reconstruct";
-import { computePatterns, computeSections, deriveCoaching } from "./analysis";
+import { computeAim, computePatterns, computeSections, deriveCoaching } from "./analysis";
 
 const KEY_MASK = 1 | 2 | 4 | 8;
+
+// osu! draws (and you aim at) the stack-offset position, not the raw one
+export function stackedPos(o: StandardHitObject): { x: number; y: number } {
+  const s = (o as unknown as { stackedStartPosition?: { x: number; y: number } })
+    .stackedStartPosition;
+  return s ?? o.startPosition;
+}
 
 // cursor state at an arbitrary time, interpolated between frames
 function cursorAt(frames: Frame[], t: number): { x: number; y: number; keys: number } {
@@ -64,62 +72,79 @@ function fracJudge(hit: number, total: number): Judgement {
   return "miss";
 }
 
+export type JudgeOutput = {
+  mechanics: Mechanics;
+  // final judgement per hitObject, in beatmap order (feeds the viewer)
+  objectJudgements: Judgement[];
+};
+
 // full-play judgement: circles + slider follow-circle + spinner rotations.
 // UR / hit errors come from the tap engine (circles + slider heads).
-export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): Mechanics {
+export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): JudgeOutput {
   const od = beatmap.difficulty.overallDifficulty;
   const cs = beatmap.difficulty.circleSize;
-  const followR2 = (circleRadius(cs) * 2.4) ** 2;
+  const radius = circleRadius(cs);
+  const followR2 = (radius * 2.4) ** 2;
 
   const taps: TapObject[] = [];
-  const tapRef: (Circle | Slider)[] = [];
-  for (const o of beatmap.hitObjects) {
+  const tapIndex: number[] = []; // tap i -> hitObjects index
+  beatmap.hitObjects.forEach((o, oi) => {
     if (o instanceof Circle || o instanceof Slider) {
-      taps.push({
-        time: o.startTime,
-        x: o.startPosition.x,
-        y: o.startPosition.y,
-        isSlider: o instanceof Slider,
-      });
-      tapRef.push(o);
+      const p = stackedPos(o);
+      taps.push({ time: o.startTime, x: p.x, y: p.y, isSlider: o instanceof Slider });
+      tapIndex.push(oi);
     }
-  }
+  });
 
   const { mechanics, results } = reconstruct(taps, frames, { od, cs });
 
+  const judgements: Judgement[] = new Array(beatmap.hitObjects.length).fill("miss");
   let c300 = 0;
   let c100 = 0;
   let c50 = 0;
   let miss = 0;
-  const bump = (j: Judgement) => {
+  let sliderBreaks = 0;
+  const missTimes: number[] = [];
+  const bump = (j: Judgement, oi: number, time: number) => {
+    judgements[oi] = j;
     if (j === "great") c300++;
     else if (j === "ok") c100++;
     else if (j === "meh") c50++;
-    else miss++;
+    else {
+      miss++;
+      missTimes.push(Math.round(time));
+    }
   };
 
   results.forEach((r, i) => {
-    const o = tapRef[i];
+    const oi = tapIndex[i];
+    const o = beatmap.hitObjects[oi];
     if (!(o instanceof Slider)) {
-      bump(r.judgement); // circle: tap result is final
+      bump(r.judgement, oi, r.time);
       return;
     }
-    let hit = r.judgement !== "miss" ? 1 : 0; // head
+    // slider: nested parts follow the same stack offset as the head
+    const sp = stackedPos(o);
+    const sdx = sp.x - o.startPosition.x;
+    const sdy = sp.y - o.startPosition.y;
+    const headHit = r.judgement !== "miss";
+    let hit = headHit ? 1 : 0;
     let total = 1;
     for (const n of o.nestedHitObjects) {
       if (n instanceof SliderHead) continue;
       total++;
       const c = cursorAt(frames, n.startTime);
       if ((c.keys & KEY_MASK) === 0) continue;
-      const dx = c.x - n.startPosition.x;
-      const dy = c.y - n.startPosition.y;
+      const dx = c.x - (n.startPosition.x + sdx);
+      const dy = c.y - (n.startPosition.y + sdy);
       if (dx * dx + dy * dy <= followR2) hit++;
     }
-    bump(fracJudge(hit, total));
+    if (headHit && hit < total) sliderBreaks++;
+    bump(fracJudge(hit, total), oi, r.time);
   });
 
-  for (const o of beatmap.hitObjects) {
-    if (!(o instanceof Spinner)) continue;
+  beatmap.hitObjects.forEach((o, oi) => {
+    if (!(o instanceof Spinner)) return;
     const required = o.nestedHitObjects.filter(
       (n) => n instanceof SpinnerTick && !(n instanceof SpinnerBonusTick),
     ).length;
@@ -132,21 +157,31 @@ export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): Mechanics 
           : spins >= required * 0.5
             ? "meh"
             : "miss",
+      oi,
+      o.startTime,
     );
-  }
+  });
 
   const sections = computeSections(results);
-  const patterns = computePatterns(taps, results, circleRadius(cs));
+  const patterns = computePatterns(taps, results, radius);
+  const aim = computeAim(taps, results, radius);
+  missTimes.sort((a, b) => a - b);
 
   return {
-    ...mechanics,
-    count300: c300,
-    count100: c100,
-    count50: c50,
-    countMiss: miss,
-    objects: beatmap.hitObjects.length,
-    sections,
-    patterns,
-    coaching: deriveCoaching(mechanics.meanError, sections, patterns),
+    mechanics: {
+      ...mechanics,
+      count300: c300,
+      count100: c100,
+      count50: c50,
+      countMiss: miss,
+      objects: beatmap.hitObjects.length,
+      sections,
+      patterns,
+      aim,
+      sliderBreaks,
+      missTimes,
+      coaching: deriveCoaching(mechanics.meanError, sections, patterns, aim, sliderBreaks, missTimes),
+    },
+    objectJudgements: judgements,
   };
 }

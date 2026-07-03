@@ -11,11 +11,22 @@ export type ObjectResult = {
   isSlider: boolean;
   judgement: Judgement;
   error: number | null; // signed ms, + = late, null = miss
+  offN?: number; // cursor offset from centre at press, normalized (0 centre, 1 edge)
+  pressX?: number;
+  pressY?: number;
 };
 
 export type Section = { fromMs: number; toMs: number; ur: number; misses: number };
 export type PatternStat = { name: string; ur: number; count: number };
 export type Coaching = { strengths: string[]; weaknesses: string[]; practice: string[] };
+
+export type AimStats = {
+  avgOffset: number; // mean normalized offset across hits (0 centre, 1 edge)
+  edgeHitRate: number; // share of hits landing past 0.85 of the radius
+  undershootRate: number; // on spaced jumps: press lands short of the target
+  overshootRate: number;
+  jumpsSampled: number;
+};
 
 export type Mechanics = {
   ur: number; // unstable rate = stdev(errors) * 10
@@ -31,6 +42,9 @@ export type Mechanics = {
   sections: Section[]; // UR / misses over equal time slices
   patterns: PatternStat[]; // UR grouped by movement pattern
   coaching: Coaching; // synthesised strengths / weaknesses / practice
+  aim: AimStats;
+  sliderBreaks: number;
+  missTimes: number[]; // ms into the map, for concrete callouts
 };
 
 export type ReconstructOptions = { od: number; cs: number };
@@ -101,14 +115,27 @@ export function reconstruct(
       const e = edges[j];
       const dx = e.x - obj.x;
       const dy = e.y - obj.y;
-      if (dx * dx + dy * dy <= r2) {
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= r2) {
         const error = e.time - obj.time;
-        hit = { time: obj.time, isSlider: obj.isSlider, judgement: judge(Math.abs(error), w), error };
-        ei = j + 1; // consume this press (note-lock: it can't hit a later object)
+        hit = {
+          time: obj.time,
+          isSlider: obj.isSlider,
+          judgement: judge(Math.abs(error), w),
+          error,
+          offN: Math.sqrt(d2) / radius,
+          pressX: e.x,
+          pressY: e.y,
+        };
+        ei = j + 1; // consume this press
         break;
       }
       j++;
     }
+
+    // stable note-lock: while this object was pending, presses that missed it
+    // spatially did nothing — they can never carry over to a later object
+    if (!hit) ei = j;
 
     results.push(hit ?? { time: obj.time, isSlider: obj.isSlider, judgement: "miss", error: null });
   }
@@ -204,6 +231,9 @@ function aggregate(results: ObjectResult[]): Mechanics {
     sections: [],
     patterns: [],
     coaching: { strengths: [], weaknesses: [], practice: [] },
+    aim: { avgOffset: 0, edgeHitRate: 0, undershootRate: 0, overshootRate: 0, jumpsSampled: 0 },
+    sliderBreaks: 0,
+    missTimes: [],
   };
 }
 

@@ -1,5 +1,6 @@
 import {
   unstableRate,
+  type AimStats,
   type Coaching,
   type ObjectResult,
   type PatternStat,
@@ -8,6 +9,48 @@ import {
 } from "./reconstruct";
 
 const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+
+const mmss = (ms: number) =>
+  `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+
+// where presses land inside the circle, and jump under/overshoot from the
+// press offset projected onto the approach direction
+export function computeAim(
+  taps: TapObject[],
+  results: ObjectResult[],
+  radius: number,
+): AimStats {
+  const offsets: number[] = [];
+  let edge = 0;
+  let under = 0;
+  let over = 0;
+  let jumps = 0;
+
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.offN == null || r.pressX == null || r.pressY == null) continue;
+    offsets.push(r.offN);
+    if (r.offN >= 0.85) edge++;
+
+    if (i === 0) continue;
+    const dx = taps[i].x - taps[i - 1].x;
+    const dy = taps[i].y - taps[i - 1].y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < radius * 3) continue; // only spaced jumps carry a direction signal
+    jumps++;
+    const proj = ((r.pressX - taps[i].x) * dx + (r.pressY - taps[i].y) * dy) / dist / radius;
+    if (proj <= -0.3) under++; // landed short, toward where you came from
+    else if (proj >= 0.3) over++;
+  }
+
+  return {
+    avgOffset: avg(offsets),
+    edgeHitRate: offsets.length ? edge / offsets.length : 0,
+    undershootRate: jumps ? under / jumps : 0,
+    overshootRate: jumps ? over / jumps : 0,
+    jumpsSampled: jumps,
+  };
+}
 
 // UR + misses over equal time slices, so spikes are locatable in the map
 export function computeSections(results: ObjectResult[], buckets = 10): Section[] {
@@ -80,6 +123,9 @@ export function deriveCoaching(
   meanError: number,
   sections: Section[],
   patterns: PatternStat[],
+  aim?: AimStats,
+  sliderBreaks = 0,
+  missTimes: number[] = [],
 ): Coaching {
   const strengths: string[] = [];
   const weaknesses: string[] = [];
@@ -129,11 +175,39 @@ export function deriveCoaching(
     }
   }
 
-  const totalMisses = sections.reduce((a, s) => a + s.misses, 0);
-  if (totalMisses > 0) {
-    const worstSec = [...sections].sort((a, b) => b.misses - a.misses)[0];
-    if (worstSec.misses > 0)
-      weaknesses.push(`Most misses cluster around ${Math.round(worstSec.fromMs / 1000)}s into the map.`);
+  // aim signals — only with a real jump sample behind them
+  if (aim && aim.jumpsSampled >= 15) {
+    if (aim.undershootRate >= 0.35) {
+      weaknesses.push(
+        `You undershoot jumps — ${Math.round(aim.undershootRate * 100)}% of spaced hits land short of the target.`,
+      );
+      practice.push("Practice snap aim: overshoot-focused jump maps, slightly larger spacing than comfortable.");
+    } else if (aim.overshootRate >= 0.35) {
+      weaknesses.push(
+        `You overshoot jumps — ${Math.round(aim.overshootRate * 100)}% of spaced hits sail past centre.`,
+      );
+      practice.push("Practice controlled aim: lower spacing, focus on stopping on the circle.");
+    }
+  }
+  if (aim && aim.edgeHitRate >= 0.3) {
+    weaknesses.push(
+      `${Math.round(aim.edgeHitRate * 100)}% of your hits land on the circle's edge — aim is loose even when timing is fine.`,
+    );
+    practice.push("Play a notch smaller CS or slower maps focusing on cursor precision.");
+  } else if (aim && aim.avgOffset > 0 && aim.avgOffset <= 0.45) {
+    strengths.push(`Aim is tight — hits average ${Math.round(aim.avgOffset * 100)}% from centre.`);
+  }
+
+  if (sliderBreaks > 0) {
+    weaknesses.push(`${sliderBreaks} slider break${sliderBreaks > 1 ? "s" : ""} — you drop the follow circle after the head.`);
+    practice.push("Hold sliders to the end; practice slider-heavy maps at low BPM.");
+  }
+
+  if (missTimes.length > 0) {
+    const shown = missTimes.slice(0, 4).map(mmss).join(", ");
+    weaknesses.push(
+      `Miss${missTimes.length > 1 ? "es" : ""} at ${shown}${missTimes.length > 4 ? ` (+${missTimes.length - 4} more)` : ""} — scrub the viewer there.`,
+    );
   }
 
   if (strengths.length === 0) strengths.push("Solid, balanced play with no glaring weakness.");

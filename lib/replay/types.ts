@@ -37,9 +37,9 @@ export type ViewerObject = {
   x: number;
   y: number;
   type: number; // 0 circle, 1 slider, 2 spinner
-  ex?: number; // slider end position
-  ey?: number;
   end?: number; // slider/spinner end time
+  path?: number[]; // slider body polyline, flat absolute [x0,y0,x1,y1,...]
+  j?: number; // judgement: 0=300 1=100 2=50 3=miss
 };
 
 export type ViewerFrame = { t: number; x: number; y: number; k: number };
