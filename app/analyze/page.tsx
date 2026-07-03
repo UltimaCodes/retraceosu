@@ -89,6 +89,31 @@ function FilePill({
   );
 }
 
+// compact measured facts for the optional AI coach
+function coachFacts(s: ParsedSummary) {
+  const m = s.mechanics;
+  return {
+    map: `${s.beatmap.artist} - ${s.beatmap.title} [${s.beatmap.version}]`,
+    mods: s.replay.mods,
+    accuracy: +s.replay.accuracy.toFixed(2),
+    counts: { c300: m.count300, c100: m.count100, c50: m.count50, miss: m.countMiss },
+    ur: Math.round(m.ur),
+    meanErrorMs: +m.meanError.toFixed(1),
+    earlyPct: Math.round(m.earlyRate * 100),
+    aim: {
+      avgOffsetPctOfRadius: Math.round(m.aim.avgOffset * 100),
+      edgeHitPct: Math.round(m.aim.edgeHitRate * 100),
+      undershootPct: Math.round(m.aim.undershootRate * 100),
+      overshootPct: Math.round(m.aim.overshootRate * 100),
+      jumpsSampled: m.aim.jumpsSampled,
+    },
+    sliderBreaks: m.sliderBreaks,
+    missTimestampsSec: m.missTimes.slice(0, 8).map((t) => Math.round(t / 1000)),
+    patterns: m.patterns.map((p) => ({ name: p.name, ur: Math.round(p.ur), notes: p.count })),
+    sectionUr: m.sections.map((x) => Math.round(x.ur)),
+  };
+}
+
 export default function AnalyzePage() {
   const [osu, setOsu] = useState<File | null>(null);
   const [osr, setOsr] = useState<File | null>(null);
@@ -96,6 +121,7 @@ export default function AnalyzePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ParsedSummary | null>(null);
+  const [aiReview, setAiReview] = useState<string | null>(null);
 
   function take(files: FileList | File[]) {
     for (const f of Array.from(files)) {
@@ -109,10 +135,21 @@ export default function AnalyzePage() {
     setBusy(true);
     setError(null);
     setSummary(null);
+    setAiReview(null);
     try {
       const osrBuffer = await osr.arrayBuffer();
       const osuText = osu ? await osu.text() : undefined;
-      setSummary(await parseReplay(osrBuffer, osuText));
+      const parsed = await parseReplay(osrBuffer, osuText);
+      setSummary(parsed);
+      // optional AI review; deterministic coaching already covers the fallback
+      fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(coachFacts(parsed)),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j?.review && setAiReview(j.review))
+        .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -365,6 +402,19 @@ export default function AnalyzePage() {
               </div>
               <p className="mt-4 text-[11px] text-white/35">
                 Based on this single replay. Analyze more to build a fuller picture.
+              </p>
+            </section>
+          )}
+
+          {aiReview && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>AI coach</SectionTitle>
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
+                {aiReview}
+              </div>
+              <p className="mt-3 text-[11px] text-white/35">
+                Written by an LLM from the measured facts above — numbers come from the
+                reconstruction, not the model.
               </p>
             </section>
           )}
