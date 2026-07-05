@@ -50,6 +50,12 @@ export default function Home() {
             >
               Analyze replay
             </Link>
+            <Link
+              href="/farm"
+              className="text-sm font-medium text-white/60 transition hover:text-pink"
+            >
+              Farm maps
+            </Link>
             {state.status === "ready" && (
               <form action="/api/auth/logout" method="post">
                 <button className="text-sm text-white/50 transition hover:text-white">

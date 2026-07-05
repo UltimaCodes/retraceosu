@@ -49,6 +49,7 @@ function summarize(
   score: Score,
   mechanics: Mechanics,
   viewer: ViewerData,
+  osuText: string,
 ): ParsedSummary {
   const objects = beatmap.hitObjects;
   const last = objects[objects.length - 1];
@@ -91,6 +92,7 @@ function summarize(
     },
     mechanics,
     viewer,
+    osuText,
   };
 }
 
@@ -113,7 +115,7 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
       throw new Error("Retrace only supports osu!standard beatmaps.");
     }
     const { mechanics, viewer } = analyzeFromDecoded(beatmap, score);
-    ctx.postMessage({ ok: true, summary: summarize(beatmap, score, mechanics, viewer) });
+    ctx.postMessage({ ok: true, summary: summarize(beatmap, score, mechanics, viewer, osuText) });
   } catch (err) {
     ctx.postMessage({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }

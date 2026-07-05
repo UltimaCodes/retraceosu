@@ -58,6 +58,7 @@ export type ParsedSummary = {
   replay: ParsedReplay;
   mechanics: Mechanics;
   viewer: ViewerData;
+  osuText: string; // raw .osu, kept for server-side pp calculation
 };
 
 export type ParseResponse =

@@ -122,6 +122,7 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ParsedSummary | null>(null);
   const [aiReview, setAiReview] = useState<string | null>(null);
+  const [pp, setPp] = useState<{ pp: number; ppFc: number; stars: number } | null>(null);
 
   function take(files: FileList | File[]) {
     for (const f of Array.from(files)) {
@@ -150,6 +151,24 @@ export default function AnalyzePage() {
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => j?.review && setAiReview(j.review))
         .catch(() => {});
+      // exact pp from the replay's stored counts
+      setPp(null);
+      fetch("/api/pp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          osuText: parsed.osuText,
+          mods: ["None", "NM", ""].includes(parsed.replay.mods) ? 0 : parsed.replay.mods,
+          n300: parsed.replay.counts.great,
+          n100: parsed.replay.counts.ok,
+          n50: parsed.replay.counts.meh,
+          misses: parsed.replay.counts.miss,
+          combo: parsed.replay.maxCombo,
+        }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j?.pp != null && setPp(j))
+        .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -164,9 +183,14 @@ export default function AnalyzePage() {
           <Link href="/" className="font-display text-xl font-bold tracking-tight text-white">
             Re<span className="text-pink">trace</span>
           </Link>
-          <Link href="/" className="text-sm text-white/50 transition hover:text-white">
-            ← Profile
-          </Link>
+          <div className="flex items-center gap-4 text-sm">
+            <Link href="/farm" className="text-white/50 transition hover:text-white">
+              Farm maps
+            </Link>
+            <Link href="/" className="text-white/50 transition hover:text-white">
+              Profile
+            </Link>
+          </div>
         </div>
       </nav>
 
@@ -270,6 +294,12 @@ export default function AnalyzePage() {
                 {["None", "NM", ""].includes(summary.replay.mods)
                   ? "nomod"
                   : `+${summary.replay.mods}`}
+                {pp && (
+                  <span className="ml-2 rounded bg-pink/15 px-1.5 py-0.5 text-[11px] font-semibold">
+                    {Math.round(pp.pp)}pp · {pp.stars.toFixed(2)}★
+                    {pp.ppFc - pp.pp > 5 && ` · FC ≈ ${Math.round(pp.ppFc)}pp`}
+                  </span>
+                )}
               </p>
               <div className="mt-4">
                 <Row label="Accuracy" value={`${summary.replay.accuracy.toFixed(2)}%`} />
