@@ -11,15 +11,30 @@ type Rec = {
   title: string;
   version: string;
   mods: string;
+  accUsed: number;
   expectedPp: number;
   stars: number;
   bpm: number;
   lengthSec: number;
+  lean: "aim" | "speed" | "balanced";
 };
 
 type FarmData = {
-  profile: { mods: string; acc: number; floor: number; srLo: number; srHi: number };
+  profile: {
+    combos: { mods: string; acc: number }[];
+    floor: number;
+    top: number;
+    srLo: number;
+    srHi: number;
+    lean: "aim" | "speed" | "balanced" | null;
+  };
   recommendations: Rec[];
+};
+
+const LEAN_STYLE: Record<Rec["lean"], string> = {
+  aim: "bg-[#7d4fff]/20 text-[#b79aff]",
+  speed: "bg-[#5fd0ff]/15 text-[#5fd0ff]",
+  balanced: "bg-white/10 text-white/60",
 };
 
 type State =
@@ -94,15 +109,22 @@ export default function FarmPage() {
         {state.status === "ready" && (
           <>
             <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
+              {state.data.profile.combos.map((c) => (
+                <span key={c.mods} className="rounded-full bg-black/20 px-3 py-1 text-white/70">
+                  {c.mods} @ {c.acc}%
+                </span>
+              ))}
               <span className="rounded-full bg-black/20 px-3 py-1 text-white/70">
-                {state.data.profile.mods} @ {state.data.profile.acc}%
-              </span>
-              <span className="rounded-full bg-black/20 px-3 py-1 text-white/70">
-                pp floor {state.data.profile.floor}
+                pp {state.data.profile.floor}–{state.data.profile.top}
               </span>
               <span className="rounded-full bg-black/20 px-3 py-1 text-white/70">
                 {state.data.profile.srLo}–{state.data.profile.srHi}★ pool
               </span>
+              {state.data.profile.lean && (
+                <span className={`rounded-full px-3 py-1 ${LEAN_STYLE[state.data.profile.lean]}`}>
+                  {state.data.profile.lean} player
+                </span>
+              )}
             </div>
 
             {state.data.recommendations.length === 0 ? (
@@ -126,7 +148,15 @@ export default function FarmPage() {
                       </p>
                       <p className="truncate text-sm text-white/50">
                         [{r.version}] · {r.stars}★ · {r.bpm}bpm · {formatDuration(r.lengthSec)}
-                        {r.mods !== "NM" && ` · +${r.mods}`}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="rounded bg-pink/15 px-1.5 py-0.5 font-semibold text-pink">
+                          {r.mods === "NM" ? "nomod" : `+${r.mods}`}
+                        </span>
+                        <span className="text-white/45">needs FC @ {r.accUsed}%</span>
+                        <span className={`rounded px-1.5 py-0.5 font-semibold ${LEAN_STYLE[r.lean]}`}>
+                          {r.lean}
+                        </span>
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
@@ -142,8 +172,10 @@ export default function FarmPage() {
               </div>
             )}
             <p className="mt-4 text-[11px] text-white/35">
-              Pool: popular ranked maps in your comfort star range, minus maps already in
-              your top 100. Expected pp assumes an FC at your median accuracy.
+              Pool: popular ranked maps in your comfort star range, minus your top 100.
+              Each map is priced under your real mod combos at that combo&apos;s median
+              accuracy, capped near your best play (no fantasy FCs), and ranked toward
+              your measured aim/speed lean.
             </p>
           </>
         )}

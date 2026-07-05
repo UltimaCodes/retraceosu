@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { deriveFarmProfile, pickCandidates, type SearchSet } from "@/lib/recommend";
-import { calcPp, fetchOsuFile } from "@/lib/server/rosu";
+import { aimLean, calcPp, fetchOsuFile } from "@/lib/server/rosu";
 import { mapLimit } from "@/lib/osu/difficulty";
 
 export type Recommendation = {
@@ -12,14 +12,27 @@ export type Recommendation = {
   title: string;
   version: string;
   mods: string;
+  accUsed: number; // the acc the expected pp assumes
   expectedPp: number;
   stars: number;
   bpm: number;
   lengthSec: number;
+  lean: "aim" | "speed" | "balanced";
 };
 
 const cache = new Map<number, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
+
+// recs beyond your best play * this are FC fantasies, not farm
+const CEILING = 1.5;
+
+const median = (v: number[]) => {
+  const s = [...v].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : 0.5;
+};
+
+const leanTag = (l: number): Recommendation["lean"] =>
+  l >= 0.54 ? "aim" : l <= 0.46 ? "speed" : "balanced";
 
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("osu_token")?.value;
@@ -39,6 +52,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "not_enough_plays" }, { status: 422 });
     }
 
+    // aim/speed lean measured from their strongest plays, under the main combo
+    const mainMods = profile.combos[0].mods || 0;
+    const leans = (
+      await mapLimit(profile.sampleIds, 6, async (id) => {
+        const text = await fetchOsuFile(id);
+        return text ? aimLean(text, mainMods) : null;
+      })
+    ).filter((l): l is number => l != null);
+    const userLean = leans.length >= 5 ? median(leans) : null;
+
     const q = encodeURIComponent(`stars>=${profile.srLo} stars<=${profile.srHi}`);
     const search = await osuFetch<{ beatmapsets: SearchSet[] }>(
       token,
@@ -46,41 +69,62 @@ export async function GET(req: NextRequest) {
     );
     const candidates = pickCandidates(search.beatmapsets ?? [], profile);
 
-    const rate = profile.mods.includes("DT") ? 1.5 : profile.mods.includes("HT") ? 0.75 : 1;
-    const recs = (
+    const ceiling = profile.top * CEILING;
+    const scored = (
       await mapLimit(candidates, 6, async (c) => {
         const osuText = await fetchOsuFile(c.beatmapId);
         if (!osuText) return null;
-        try {
-          const r = calcPp(osuText, { mods: profile.mods || 0, accuracy: profile.acc, misses: 0 });
-          return {
-            beatmapId: c.beatmapId,
-            setId: c.setId,
-            artist: c.artist,
-            title: c.title,
-            version: c.version,
-            mods: profile.mods || "NM",
-            expectedPp: Math.round(r.pp),
-            stars: +r.stars.toFixed(2),
-            bpm: Math.round(c.bpm * rate),
-            lengthSec: Math.round(c.lengthSec / rate),
-          } satisfies Recommendation;
-        } catch {
-          return null;
+        // try each of their real mod combos at that combo's own acc; keep the best
+        let pick: { rec: Recommendation; lean: number } | null = null;
+        for (const combo of profile.combos) {
+          try {
+            const r = calcPp(osuText, { mods: combo.mods || 0, accuracy: combo.acc, misses: 0 });
+            if (r.pp <= profile.floor || r.pp > ceiling) continue;
+            if (pick && r.pp <= pick.rec.expectedPp) continue;
+            const rate = combo.mods.includes("DT") ? 1.5 : combo.mods.includes("HT") ? 0.75 : 1;
+            const lean = aimLean(osuText, combo.mods || 0) ?? 0.5;
+            pick = {
+              lean,
+              rec: {
+                beatmapId: c.beatmapId,
+                setId: c.setId,
+                artist: c.artist,
+                title: c.title,
+                version: c.version,
+                mods: combo.mods || "NM",
+                accUsed: combo.acc,
+                expectedPp: Math.round(r.pp),
+                stars: +r.stars.toFixed(2),
+                bpm: Math.round(c.bpm * rate),
+                lengthSec: Math.round(c.lengthSec / rate),
+                lean: leanTag(lean),
+              },
+            };
+          } catch {
+            // unparseable under this combo — skip
+          }
         }
+        return pick;
       })
-    ).filter((r): r is Recommendation => r != null && r.expectedPp > profile.floor);
+    ).filter((p): p is { rec: Recommendation; lean: number } => p != null);
 
-    recs.sort((a, b) => b.expectedPp - a.expectedPp);
+    // rank by pp, discounted by distance from the player's own aim/speed lean
+    scored.sort((a, b) => {
+      const fit = (l: number) =>
+        userLean == null ? 1 : 1 - Math.min(0.4, Math.abs(l - userLean) * 2.5);
+      return b.rec.expectedPp * fit(b.lean) - a.rec.expectedPp * fit(a.lean);
+    });
+
     const body = {
       profile: {
-        mods: profile.mods || "NM",
-        acc: profile.acc,
+        combos: profile.combos.map((c) => ({ mods: c.mods || "NM", acc: c.acc })),
         floor: Math.round(profile.floor),
+        top: Math.round(profile.top),
         srLo: profile.srLo,
         srHi: profile.srHi,
+        lean: userLean == null ? null : leanTag(userLean),
       },
-      recommendations: recs.slice(0, 12),
+      recommendations: scored.slice(0, 12).map((s) => s.rec),
     };
     cache.set(me.id, { at: Date.now(), body });
     return NextResponse.json(body);

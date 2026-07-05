@@ -1,12 +1,19 @@
 import type { OsuMod, OsuScore } from "./osu/types";
 
-export type FarmProfile = {
-  mods: string; // main scoring-relevant combo, "" = nomod
+export type ComboProfile = {
+  mods: string; // scoring-relevant combo, "" = nomod
   acc: number; // median accuracy on that combo, percent
+  count: number;
+};
+
+export type FarmProfile = {
+  combos: ComboProfile[]; // top combos by usage, most-played first
   srLo: number; // nomod SR comfort band for candidates
   srHi: number;
   floor: number; // lowest pp in top plays — the bar to clear
+  top: number; // best play pp — realism ceiling for recommendations
   owned: number[]; // beatmap ids already in top plays
+  sampleIds: number[]; // highest-pp beatmap ids, for measuring aim/speed lean
 };
 
 export type SearchBeatmap = {
@@ -57,26 +64,37 @@ export function deriveFarmProfile(scores: OsuScore[]): FarmProfile | null {
   const withPp = scores.filter((s) => s.pp != null);
   if (withPp.length < 5) return null;
 
-  const combos = new Map<string, OsuScore[]>();
+  const byCombo = new Map<string, OsuScore[]>();
   for (const s of withPp) {
     const c = ppCombo(s.mods);
-    combos.set(c, [...(combos.get(c) ?? []), s]);
+    byCombo.set(c, [...(byCombo.get(c) ?? []), s]);
   }
-  const [mainCombo, comboScores] = [...combos.entries()].sort(
-    (a, b) => b[1].length - a[1].length,
-  )[0];
-  const sample = comboScores.length >= 8 ? comboScores : withPp;
+  // top 2 combos, second only if it's a real part of their play (>=15%)
+  const ranked = [...byCombo.entries()].sort((a, b) => b[1].length - a[1].length);
+  const combos: ComboProfile[] = ranked
+    .filter(([, list], i) => i === 0 || list.length >= withPp.length * 0.15)
+    .slice(0, 2)
+    .map(([mods, list]) => {
+      const accs = list.map((s) => s.accuracy * 100).sort((a, b) => a - b);
+      return { mods, acc: +quantile(accs, 0.5).toFixed(2), count: list.length };
+    });
 
-  const srs = sample.map((s) => s.beatmap.difficulty_rating).sort((a, b) => a - b);
-  const accs = sample.map((s) => s.accuracy * 100).sort((a, b) => a - b);
+  const main = ranked[0][1].length >= 8 ? ranked[0][1] : withPp;
+  const srs = main.map((s) => s.beatmap.difficulty_rating).sort((a, b) => a - b);
+  const pps = withPp.map((s) => s.pp as number);
 
   return {
-    mods: mainCombo,
-    acc: +quantile(accs, 0.5).toFixed(2),
-    srLo: +quantile(srs, 0.4).toFixed(2),
-    srHi: +(quantile(srs, 0.95) + 0.2).toFixed(2),
-    floor: scores.length >= 100 ? Math.min(...withPp.map((s) => s.pp as number)) : 0,
+    combos,
+    // FCs happen below your ceiling — band ends near p80, not at your hardest scrape
+    srLo: +quantile(srs, 0.35).toFixed(2),
+    srHi: +(quantile(srs, 0.8) + 0.1).toFixed(2),
+    floor: scores.length >= 100 ? Math.min(...pps) : 0,
+    top: Math.max(...pps),
     owned: withPp.map((s) => s.beatmap.id),
+    sampleIds: [...withPp]
+      .sort((a, b) => (b.pp as number) - (a.pp as number))
+      .slice(0, 12)
+      .map((s) => s.beatmap.id),
   };
 }
 

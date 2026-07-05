@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "bad_map" }, { status: 400 });
     }
     const result = calcPp(osuText, { mods: mods ?? 0, n300, n100, n50, misses, combo });
-    return NextResponse.json(result);
+    return NextResponse.json(result);5
   } catch {
     return NextResponse.json({ error: "calc_failed" }, { status: 422 });
   }

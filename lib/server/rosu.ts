@@ -50,6 +50,22 @@ export function calcPp(osuText: string, input: PpInput): PpResult {
   }
 }
 
+// aim share of total difficulty: ~0.5 balanced, higher = aim map, lower = speed map
+export function aimLean(osuText: string, mods: string | number): number | null {
+  const map = new rosu.Beatmap(osuText);
+  try {
+    if (map.mode !== rosu.GameMode.Osu) return null;
+    const d = new rosu.Difficulty({ mods }).calculate(map);
+    const aim = d.aim ?? 0;
+    const speed = d.speed ?? 0;
+    return aim + speed > 0 ? aim / (aim + speed) : null;
+  } catch {
+    return null;
+  } finally {
+    map.free();
+  }
+}
+
 function accFromCounts(i: PpInput): number | undefined {
   if (i.n300 == null) return undefined;
   const n300 = i.n300 ?? 0;
