@@ -24,7 +24,7 @@ const cache = new Map<number, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
 
 // recs beyond your best play * this are FC fantasies, not farm
-const CEILING = 1.5;
+const CEILING = 1.2;
 
 const median = (v: number[]) => {
   const s = [...v].sort((a, b) => a - b);
