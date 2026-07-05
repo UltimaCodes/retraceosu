@@ -98,12 +98,17 @@ function toHighlight(s: OsuScore, attrs?: AttrMap): PlayHighlight {
   };
 }
 
-// first play still standing worth each pp step, most recent steps first
+// first play still standing worth each pp step, most recent steps first.
+// steps below the #100 floor are degenerate (every play clears them), skip those
 function buildMilestones(scored: OsuScore[], highlights: PlayHighlight[]): Milestone[] {
-  const top = Math.max(0, ...highlights.map((h) => h.pp));
-  if (top < 100) return [];
+  if (highlights.length === 0) return [];
+  const pps = highlights.map((h) => h.pp);
+  const top = Math.max(...pps);
+  const floor = Math.min(...pps);
+  const start = Math.max(100, (Math.floor(floor / 100) + 1) * 100);
+  if (top < start) return [];
   const steps: number[] = [];
-  for (let t = 100; t <= top; t += 100) steps.push(t);
+  for (let t = start; t <= top; t += 100) steps.push(t);
   const out: Milestone[] = [];
   for (const t of steps.slice(-6)) {
     let idx = -1;
