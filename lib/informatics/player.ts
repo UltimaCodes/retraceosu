@@ -1,20 +1,24 @@
-import type { OsuMe, OsuScore } from "../osu/types";
+import type { OsuDifficultyAttributes, OsuMe, OsuScore } from "../osu/types";
 import { acronyms, scoreCombo } from "../osu/scoreMods";
 
 export type PlayHighlight = {
   beatmapId: number;
   title: string;
+  artist: string;
   version: string;
-  mods: string;
+  mods: string; // display acronyms
+  combo: string; // scoring combo for filtering, "" = nomod
   pp: number;
-  stars: number;
+  stars: number; // mod-adjusted when attributes are available
   acc: number;
+  misses: number;
+  lengthSec: number; // effective (rate-adjusted)
   ageDays: number;
 };
 
-export type ModBest = { mod: string; play: PlayHighlight | null; count: number };
 export type ComboBest = { combo: string; count: number; play: PlayHighlight };
 export type PpBand = { from: number; to: number; count: number };
+export type Milestone = { pp: number; date: string; ageDays: number; title: string };
 
 export type PlayerReport = {
   user: {
@@ -34,15 +38,24 @@ export type PlayerReport = {
     supporter: boolean;
   };
   top: PlayHighlight | null;
-  modBests: ModBest[];
+  plays: PlayHighlight[]; // full top-100 by pp desc, for the mod picker
   comboBests: ComboBest[];
   ppBands: PpBand[];
-  ppStats: { top: number; median: number; floor: number; weightedTop: number };
+  ppStats: { top: number; median: number; floor: number };
   efficiency: { ppPerHour: number; playsPerDay: number };
   consistency: { accAvg: number; accStdev: number; noMissRate: number; avgMisses: number };
   modUsage: { mod: string; pct: number }[];
   recency: { newestDays: number; oldestDays: number; last90: number };
   spread: { srMedian: number; bpmMedian: number; arMedian: number; lengthMedianSec: number };
+  milestones: Milestone[];
+  novelty: {
+    fossil: PlayHighlight | null; // oldest play still standing
+    scrappiest: PlayHighlight | null; // lowest acc that still made the cut
+    favoriteArtists: { artist: string; count: number }[];
+    chokes: { plays: number; misses: number };
+    longest: PlayHighlight | null;
+    comfort: { lo: number; hi: number }; // modded SR p25 to p75
+  };
 };
 
 const sum = (v: number[]) => v.reduce((a, b) => a + b, 0);
@@ -50,6 +63,10 @@ const mean = (v: number[]) => (v.length ? sum(v) / v.length : 0);
 const median = (v: number[]) => {
   const s = [...v].sort((a, b) => a - b);
   return s.length ? s[Math.floor(s.length / 2)] : 0;
+};
+const quantile = (v: number[], q: number) => {
+  const s = [...v].sort((a, b) => a - b);
+  return s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : 0;
 };
 const stdev = (v: number[]) => {
   const m = mean(v);
@@ -59,58 +76,76 @@ const missOf = (s: OsuScore) => s.statistics?.count_miss ?? s.statistics?.miss ?
 const rateOf = (acr: string[]) =>
   acr.includes("DT") || acr.includes("NC") ? 1.5 : acr.includes("HT") ? 0.75 : 1;
 
-function toHighlight(s: OsuScore): PlayHighlight {
+export type AttrMap = Map<number, OsuDifficultyAttributes | null>;
+
+function toHighlight(s: OsuScore, attrs?: AttrMap): PlayHighlight {
   const acr = acronyms(s.mods);
+  const rate = rateOf(acr);
+  const attr = attrs?.get(s.beatmap.id);
   return {
     beatmapId: s.beatmap.id,
     title: s.beatmapset?.title ?? s.beatmap.version,
+    artist: s.beatmapset?.artist ?? "",
     version: s.beatmap.version,
     mods: acr.length ? [...acr].sort().join("") : "NM",
+    combo: scoreCombo(s.mods),
     pp: Math.round(s.pp ?? 0),
-    stars: Math.round(s.beatmap.difficulty_rating * 100) / 100,
+    stars: Math.round((attr?.star_rating ?? s.beatmap.difficulty_rating) * 100) / 100,
     acc: Math.round(s.accuracy * 10000) / 100,
+    misses: missOf(s),
+    lengthSec: Math.round(s.beatmap.hit_length / rate),
     ageDays: Math.floor((Date.now() - new Date(s.created_at).getTime()) / 86_400_000),
   };
 }
 
-// individual mods we split "best play" on; NM = no scoring mods
-const SPLIT_MODS = ["NM", "HD", "DT", "HR", "FL", "EZ"];
-const hasMod = (combo: string, mod: string) =>
-  mod === "NM" ? combo === "" : combo.includes(mod);
+// first play still standing worth each pp step, most recent steps first
+function buildMilestones(scored: OsuScore[], highlights: PlayHighlight[]): Milestone[] {
+  const top = Math.max(0, ...highlights.map((h) => h.pp));
+  if (top < 100) return [];
+  const steps: number[] = [];
+  for (let t = 100; t <= top; t += 100) steps.push(t);
+  const out: Milestone[] = [];
+  for (const t of steps.slice(-6)) {
+    let idx = -1;
+    let earliest = Infinity;
+    for (let i = 0; i < scored.length; i++) {
+      if ((scored[i].pp ?? 0) < t) continue;
+      const at = new Date(scored[i].created_at).getTime();
+      if (at < earliest) {
+        earliest = at;
+        idx = i;
+      }
+    }
+    if (idx >= 0) {
+      out.push({
+        pp: t,
+        date: scored[idx].created_at,
+        ageDays: Math.floor((Date.now() - earliest) / 86_400_000),
+        title: highlights[idx].title,
+      });
+    }
+  }
+  return out.reverse();
+}
 
-export function buildPlayerReport(user: OsuMe, best: OsuScore[]): PlayerReport {
+export function buildPlayerReport(user: OsuMe, best: OsuScore[], attrs?: AttrMap): PlayerReport {
   const scored = best.filter((s) => s.pp != null);
   const st = user.statistics;
 
-  const highlights = scored.map(toHighlight);
-  const combos = scored.map((s) => scoreCombo(s.mods));
+  const highlights = scored.map((s) => toHighlight(s, attrs));
   const pps = scored.map((s) => s.pp as number);
   const accs = scored.map((s) => s.accuracy * 100);
   const misses = scored.map(missOf);
 
-  const bestByPp = (pred: (i: number) => boolean): PlayHighlight | null => {
-    let idx = -1;
-    let bestPp = -1;
-    for (let i = 0; i < scored.length; i++) {
-      if (pred(i) && pps[i] > bestPp) {
-        bestPp = pps[i];
-        idx = i;
-      }
-    }
-    return idx >= 0 ? highlights[idx] : null;
-  };
-
-  const modBests: ModBest[] = SPLIT_MODS.map((mod) => ({
-    mod,
-    play: bestByPp((i) => hasMod(combos[i], mod)),
-    count: combos.filter((c) => hasMod(c, mod)).length,
-  })).filter((m) => m.count > 0);
-
   const comboCounts = new Map<string, number>();
-  for (const c of combos) comboCounts.set(c, (comboCounts.get(c) ?? 0) + 1);
+  for (const h of highlights) comboCounts.set(h.combo, (comboCounts.get(h.combo) ?? 0) + 1);
   const comboBests: ComboBest[] = [...comboCounts.entries()]
-    .map(([combo, count]) => ({ combo, count, play: bestByPp((i) => combos[i] === combo)! }))
-    .filter((c) => c.play)
+    .map(([combo, count]) => {
+      const play = highlights
+        .filter((h) => h.combo === combo)
+        .reduce((a, b) => (b.pp > a.pp ? b : a));
+      return { combo, count, play };
+    })
     .sort((a, b) => b.play.pp - a.play.pp)
     .slice(0, 8);
 
@@ -130,30 +165,36 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[]): PlayerReport {
     });
   }
 
-  // weighted pp of the visible top plays (0.95^n), how much of their total these carry
-  const weightedTop = sum(
-    [...pps].sort((a, b) => b - a).map((p, i) => p * Math.pow(0.95, i)),
-  );
-
   const modCounts = new Map<string, number>();
-  for (const s of scored) for (const m of acronyms(s.mods)) modCounts.set(m, (modCounts.get(m) ?? 0) + 1);
+  for (const s of scored)
+    for (const m of acronyms(s.mods)) modCounts.set(m, (modCounts.get(m) ?? 0) + 1);
   const modUsage = [...modCounts.entries()]
     .map(([mod, count]) => ({ mod, pct: Math.round((count / Math.max(1, scored.length)) * 100) }))
     .sort((a, b) => b.pct - a.pct);
 
-  const ages = scored.map(
-    (s) => (Date.now() - new Date(s.created_at).getTime()) / 86_400_000,
-  );
-  const srs = scored.map((s) => s.beatmap.difficulty_rating);
+  const ages = highlights.map((h) => h.ageDays);
+  const srs = highlights.map((h) => h.stars);
   const bpms = scored.map((s) => s.beatmap.bpm * rateOf(acronyms(s.mods)));
-  const ars = scored.map((s) => s.beatmap.ar);
-  const lengths = scored.map((s) => s.beatmap.hit_length / rateOf(acronyms(s.mods)));
+  const ars = scored.map(
+    (s) => attrs?.get(s.beatmap.id)?.approach_rate ?? s.beatmap.ar,
+  );
+  const lengths = highlights.map((h) => h.lengthSec);
+
+  const artistCounts = new Map<string, number>();
+  for (const h of highlights)
+    if (h.artist) artistCounts.set(h.artist, (artistCounts.get(h.artist) ?? 0) + 1);
+  const favoriteArtists = [...artistCounts.entries()]
+    .map(([artist, count]) => ({ artist, count }))
+    .sort((a, b) => b.count - a.count)
+    .filter((a) => a.count >= 2)
+    .slice(0, 3);
+
+  const chokePlays = highlights.filter((h) => h.misses > 0);
 
   const playTimeSec = st.play_time ?? 0;
-  const joinDays = Math.max(
-    1,
-    (Date.now() - new Date(user.join_date).getTime()) / 86_400_000,
-  );
+  const joinDays = Math.max(1, (Date.now() - new Date(user.join_date).getTime()) / 86_400_000);
+
+  const byPp = [...highlights].sort((a, b) => b.pp - a.pp);
 
   return {
     user: {
@@ -172,15 +213,14 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[]): PlayerReport {
       level: st.level.current,
       supporter: user.is_supporter,
     },
-    top: highlights.length ? highlights.reduce((a, b) => (b.pp > a.pp ? b : a)) : null,
-    modBests,
+    top: byPp[0] ?? null,
+    plays: byPp,
     comboBests,
     ppBands,
     ppStats: {
       top: Math.round(top),
       median: Math.round(median(pps)),
       floor: Math.round(floor),
-      weightedTop: Math.round(weightedTop),
     },
     efficiency: {
       ppPerHour: playTimeSec > 0 ? Math.round((st.pp / (playTimeSec / 3600)) * 10) / 10 : 0,
@@ -194,8 +234,8 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[]): PlayerReport {
     },
     modUsage,
     recency: {
-      newestDays: ages.length ? Math.floor(Math.min(...ages)) : 0,
-      oldestDays: ages.length ? Math.floor(Math.max(...ages)) : 0,
+      newestDays: ages.length ? Math.min(...ages) : 0,
+      oldestDays: ages.length ? Math.max(...ages) : 0,
       last90: ages.filter((d) => d <= 90).length,
     },
     spread: {
@@ -203,6 +243,24 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[]): PlayerReport {
       bpmMedian: Math.round(median(bpms)),
       arMedian: Math.round(median(ars) * 10) / 10,
       lengthMedianSec: Math.round(median(lengths)),
+    },
+    milestones: buildMilestones(scored, highlights),
+    novelty: {
+      fossil: highlights.length
+        ? highlights.reduce((a, b) => (b.ageDays > a.ageDays ? b : a))
+        : null,
+      scrappiest: highlights.length
+        ? highlights.reduce((a, b) => (b.acc < a.acc ? b : a))
+        : null,
+      favoriteArtists,
+      chokes: { plays: chokePlays.length, misses: sum(chokePlays.map((h) => h.misses)) },
+      longest: highlights.length
+        ? highlights.reduce((a, b) => (b.lengthSec > a.lengthSec ? b : a))
+        : null,
+      comfort: {
+        lo: Math.round(quantile(srs, 0.25) * 100) / 100,
+        hi: Math.round(quantile(srs, 0.75) * 100) / 100,
+      },
     },
   };
 }

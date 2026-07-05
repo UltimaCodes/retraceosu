@@ -73,7 +73,8 @@ async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
         const reason: Choke["reason"] = miss > 0 ? "choke" : "acc";
         // choke: same acc but no misses / full combo. bad acc: push acc a realistic notch
         const targetAcc = reason === "choke" ? curAcc : Math.min(99, Math.round((curAcc + 2) * 10) / 10);
-        const potentialPp = calcPp(text, { mods: combo || 0, accuracy: targetAcc, misses: 0 }).pp;
+        const r = calcPp(text, { mods: combo || 0, accuracy: targetAcc, misses: 0 });
+        const potentialPp = r.pp;
         const gain = potentialPp - curPp;
         if (gain < Math.max(10, curPp * 0.04)) return null;
         return {
@@ -81,7 +82,7 @@ async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
           title: s.beatmapset?.title ?? s.beatmap.version,
           version: s.beatmap.version,
           mods: combo || "NM",
-          stars: +s.beatmap.difficulty_rating.toFixed(2),
+          stars: +r.stars.toFixed(2), // mod-adjusted, not the nomod listing SR
           currentPp: Math.round(curPp),
           currentAcc: +curAcc.toFixed(2),
           misses: miss,

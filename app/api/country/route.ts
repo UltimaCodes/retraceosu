@@ -2,13 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAppToken } from "@/lib/osu/appToken";
 import { osuFetch } from "@/lib/osu/client";
 import type { OsuScore } from "@/lib/osu/types";
-import { buildCountryReport, type RankingItem } from "@/lib/informatics/country";
-import { mapLimit } from "@/lib/osu/difficulty";
+import { buildCountryReport, type CountryPlay, type RankingItem } from "@/lib/informatics/country";
+import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 30 * 60 * 1000; // country stats move slowly and the fan-out is expensive
 
 const SAMPLE = 12; // top players we pull bests from for big-plays / per-mod leaders
+
+// "DTHD" -> ["DT","HD"]; every osu mod acronym is two chars
+const comboToMods = (combo: string) => combo.match(/../g) ?? [];
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code")?.trim().toUpperCase();
@@ -46,6 +49,20 @@ export async function GET(req: NextRequest) {
     ).filter((s): s is { player: { id: number; username: string }; plays: OsuScore[] } => s != null);
 
     const body = buildCountryReport(code, ranking, samples);
+
+    // patch displayed plays to mod-adjusted SR (nomod SR lies about DT/HR plays)
+    const shown: CountryPlay[] = [
+      ...body.bigPlays,
+      ...body.modLeaders.map((m) => m.play),
+      ...(body.legacy ? [body.legacy] : []),
+      ...(body.speedDemon ? [body.speedDemon] : []),
+      ...(body.accBest ? [body.accBest] : []),
+    ];
+    await mapLimit(shown, 8, async (p) => {
+      const attr = await fetchAttributes(token, p.beatmapId, comboToMods(p.combo));
+      if (attr?.star_rating) p.stars = Math.round(attr.star_rating * 100) / 100;
+    });
+
     cache.set(code, { at: Date.now(), body });
     return NextResponse.json(body);
   } catch {

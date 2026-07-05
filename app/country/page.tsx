@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Nav } from "@/app/components/Nav";
+import { ScrollBox } from "@/app/components/ScrollBox";
 import { formatNumber, formatPlaytime, flagEmoji } from "@/lib/format";
 import type { CountryReport, CountryPlayer, CountryPlay } from "@/lib/informatics/country";
 
@@ -19,6 +20,16 @@ type State =
 
 function Title({ children }: { children: string }) {
   return <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>;
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-black/20 px-3 py-2.5">
+      <div className="truncate text-[11px] uppercase tracking-wide text-white/40">{label}</div>
+      <div className="truncate font-display text-sm font-bold text-white sm:text-base">{value}</div>
+      {sub && <div className="truncate text-[11px] text-white/40">{sub}</div>}
+    </div>
+  );
 }
 
 function PlayerLine({ p, metric }: { p: CountryPlayer; metric: string }) {
@@ -84,8 +95,8 @@ export default function CountryPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <h1 className="font-display text-2xl font-bold text-white">Country informatics</h1>
         <p className="mt-1 text-sm text-white/50">
-          Pick a country to see its top players, hidden prodigies (most pp per hour played),
-          biggest plays and the best score set under each mod.
+          Pick a country: hidden prodigies, the maps everyone farms, the oldest score still
+          standing and the best play under each mod.
         </p>
 
         <form
@@ -143,7 +154,7 @@ function Report({ data }: { data: CountryReport }) {
           <div className="font-display text-2xl font-bold text-white">
             {flagEmoji(data.code)} {QUICK[data.code] ?? data.code}
           </div>
-          <p className="text-sm text-white/50">top {data.leaders.length} shown · {data.sampled} players deep-scanned</p>
+          <p className="text-sm text-white/50">{data.sampled} top players deep-scanned</p>
         </div>
         <div className="flex gap-2 text-right">
           <div className="rounded-lg bg-black/20 px-3 py-2">
@@ -162,23 +173,69 @@ function Report({ data }: { data: CountryReport }) {
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-5">
-        <Title>Prodigies, most pp per hour played</Title>
+        <Title>Trivia</Title>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {data.prodigies.map((p) => (
-            <PlayerLine key={p.id} p={p} metric={`${p.ppPerHour}/h`} />
-          ))}
+          {data.speedDemon && (
+            <PlayLine play={data.speedDemon} tag={`fastest · ${data.speedDemon.effBpm}bpm`} />
+          )}
+          {data.legacy && (
+            <PlayLine
+              play={data.legacy}
+              tag={`relic · ${Math.floor(data.legacy.ageDays / 365) || "<1"}y old`}
+            />
+          )}
+          {data.accBest && <PlayLine play={data.accBest} tag={`cleanest · ${data.accBest.acc}%`} />}
+          {data.bigPlays[0] && <PlayLine play={data.bigPlays[0]} tag="the record" />}
         </div>
-        <p className="mt-2 text-[11px] text-white/35">
-          Raw pp divided by hours played. High means a lot of rank for little grind.
-        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Stat
+            label="National anthem"
+            value={data.anthem[0]?.title ?? "no overlap"}
+            sub={data.anthem[0] ? `in ${data.anthem[0].count} of ${data.sampled} players' bests` : "everyone farms differently"}
+          />
+          <Stat
+            label="House artist"
+            value={data.favoriteArtists[0]?.artist ?? "varied"}
+            sub={data.favoriteArtists[0] ? `${data.favoriteArtists[0].count} plays across bests` : ""}
+          />
+          <Stat
+            label="Mod of choice"
+            value={data.modSplit[0]?.combo ?? "?"}
+            sub={data.modSplit[0] ? `${data.modSplit[0].pct}% of sampled bests` : ""}
+          />
+          <Stat label="Median playcount" value={formatNumber(data.aggregate.medianPlaycount)} sub="across top 50" />
+        </div>
+        {data.anthem.length > 1 && (
+          <p className="mt-3 text-[11px] text-white/35">
+            also on rotation:{" "}
+            {data.anthem.slice(1).map((a) => `${a.title} (${a.count})`).join(" · ")}
+          </p>
+        )}
       </section>
 
-      <section className="rounded-xl border border-line bg-surface p-5">
-        <Title>Biggest plays</Title>
-        <div className="mt-3 space-y-2">
-          {data.bigPlays.map((play, i) => (
-            <PlayLine key={i} play={play} tag={`#${i + 1}`} />
-          ))}
+      <section className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <Title>Prodigies, most pp per hour played</Title>
+          <div className="mt-3">
+            <ScrollBox>
+              {data.prodigies.map((p) => (
+                <PlayerLine key={p.id} p={p} metric={`${p.ppPerHour}/h`} />
+              ))}
+            </ScrollBox>
+          </div>
+          <p className="mt-2 text-[11px] text-white/35">
+            Raw pp divided by hours played. High means a lot of rank for little grind.
+          </p>
+        </div>
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <Title>Biggest plays</Title>
+          <div className="mt-3">
+            <ScrollBox>
+              {data.bigPlays.map((play, i) => (
+                <PlayLine key={`${play.beatmapId}:${play.player.id}`} play={play} tag={`#${i + 1}`} />
+              ))}
+            </ScrollBox>
+          </div>
         </div>
       </section>
 
@@ -194,28 +251,34 @@ function Report({ data }: { data: CountryReport }) {
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-line bg-surface p-5">
           <Title>Grinders, most play count</Title>
-          <div className="mt-3 space-y-2">
-            {data.grinders.map((p) => (
-              <PlayerLine key={p.id} p={p} metric={formatNumber(p.playCount)} />
-            ))}
+          <div className="mt-3">
+            <ScrollBox>
+              {data.grinders.map((p) => (
+                <PlayerLine key={p.id} p={p} metric={formatNumber(p.playCount)} />
+              ))}
+            </ScrollBox>
           </div>
         </div>
         <div className="rounded-xl border border-line bg-surface p-5">
           <Title>Sharpest accuracy</Title>
-          <div className="mt-3 space-y-2">
-            {data.accLeaders.map((p) => (
-              <PlayerLine key={p.id} p={p} metric={`${p.accuracy}%`} />
-            ))}
+          <div className="mt-3">
+            <ScrollBox>
+              {data.accLeaders.map((p) => (
+                <PlayerLine key={p.id} p={p} metric={`${p.accuracy}%`} />
+              ))}
+            </ScrollBox>
           </div>
         </div>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-5">
-        <Title>{`Top ${data.leaders.length} by pp`}</Title>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {data.leaders.map((p) => (
-            <PlayerLine key={p.id} p={p} metric={`${formatNumber(p.pp)}pp`} />
-          ))}
+        <Title>Top 10 by pp</Title>
+        <div className="mt-3">
+          <ScrollBox>
+            {data.leaders.map((p) => (
+              <PlayerLine key={p.id} p={p} metric={`${formatNumber(p.pp)}pp`} />
+            ))}
+          </ScrollBox>
         </div>
       </section>
     </div>

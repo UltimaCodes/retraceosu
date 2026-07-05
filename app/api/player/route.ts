@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAppToken } from "@/lib/osu/appToken";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
-import { buildPlayerReport } from "@/lib/informatics/player";
+import { buildPlayerReport, type AttrMap } from "@/lib/informatics/player";
+import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
@@ -27,7 +28,14 @@ export async function GET(req: NextRequest) {
       `/users/${user.id}/scores/best?mode=osu&limit=100`,
       2,
     );
-    const body = buildPlayerReport(user, best);
+    // mod-adjusted star ratings for every play, so DT plays don't show nomod SR
+    const attrs: AttrMap = new Map(
+      await mapLimit(best, 8, async (s) => {
+        const attr = await fetchAttributes(token, s.beatmap.id, s.mods);
+        return [s.beatmap.id, attr] as const;
+      }),
+    );
+    const body = buildPlayerReport(user, best, attrs);
     cache.set(key, { at: Date.now(), body });
     return NextResponse.json(body);
   } catch (e) {

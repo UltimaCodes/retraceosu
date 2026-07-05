@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Nav } from "@/app/components/Nav";
-import { formatNumber, formatPlaytime, formatJoinDate, flagEmoji } from "@/lib/format";
+import { ScrollBox } from "@/app/components/ScrollBox";
+import { formatNumber, formatPlaytime, formatJoinDate, formatDuration, flagEmoji } from "@/lib/format";
 import type { PlayerReport, PlayHighlight } from "@/lib/informatics/player";
 
 type State =
@@ -11,6 +12,11 @@ type State =
   | { status: "notfound" }
   | { status: "error" }
   | { status: "ready"; data: PlayerReport };
+
+type Me = { id: number; username: string; avatarUrl: string };
+
+// every scoring-relevant mod; NM is exclusive with the rest
+const PICKER_MODS = ["NM", "HD", "DT", "HR", "HT", "EZ", "FL"] as const;
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -53,14 +59,27 @@ function PlayRow({ play, tag }: { play: PlayHighlight; tag?: string }) {
 export default function PlayerPage() {
   const [name, setName] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
+  const [me, setMe] = useState<Me | null>(null);
 
-  async function search(e?: FormEvent) {
+  useEffect(() => {
+    let live = true;
+    fetch("/api/whoami")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => live && j?.username && setMe(j))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function search(u: string, e?: FormEvent) {
     e?.preventDefault();
-    const u = name.trim();
-    if (!u) return;
+    const q = u.trim();
+    if (!q) return;
+    setName(q);
     setState({ status: "loading" });
     try {
-      const res = await fetch(`/api/player?u=${encodeURIComponent(u)}`);
+      const res = await fetch(`/api/player?u=${encodeURIComponent(q)}`);
       if (res.status === 404) return setState({ status: "notfound" });
       if (!res.ok) return setState({ status: "error" });
       setState({ status: "ready", data: await res.json() });
@@ -75,11 +94,11 @@ export default function PlayerPage() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <h1 className="font-display text-2xl font-bold text-white">Player informatics</h1>
         <p className="mt-1 text-sm text-white/50">
-          Type any osu! username to break down their top 100: best play per mod, pp profile,
-          farming efficiency and consistency.
+          Type any osu! username to dig through their top 100: pick any mod combination to find
+          their biggest play with it, pp milestones, fossils and more.
         </p>
 
-        <form onSubmit={search} className="mt-5 flex gap-2">
+        <form onSubmit={(e) => search(name, e)} className="mt-5 flex gap-2">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -92,10 +111,32 @@ export default function PlayerPage() {
             disabled={state.status === "loading"}
             className="rounded-lg bg-pink px-5 py-2.5 font-display font-bold text-white transition hover:bg-pink-dark disabled:opacity-40"
           >
-            {state.status === "loading" ? "Looking…" : "Look up"}
+            {state.status === "loading" ? "Digging…" : "Look up"}
           </button>
         </form>
 
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          {me ? (
+            <button
+              onClick={() => search(me.username)}
+              className="flex items-center gap-2 rounded-full bg-black/20 px-3 py-1.5 text-white/70 transition hover:bg-black/40 hover:text-white"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={me.avatarUrl} alt="" className="h-4 w-4 rounded" />
+              load my profile ({me.username})
+            </button>
+          ) : (
+            <a href="/api/auth/login" className="text-white/40 transition hover:text-pink">
+              sign in with osu! to load your own profile in one click
+            </a>
+          )}
+        </div>
+
+        {state.status === "loading" && (
+          <p className="mt-6 text-sm text-white/40">
+            Pulling their top 100 and mod-adjusted star ratings, takes a few seconds…
+          </p>
+        )}
         {state.status === "notfound" && (
           <p className="mt-6 text-sm text-white/50">No osu!standard player by that name.</p>
         )}
@@ -109,8 +150,77 @@ export default function PlayerPage() {
   );
 }
 
+function ModPicker({ plays }: { plays: PlayHighlight[] }) {
+  const [sel, setSel] = useState<string[]>([]);
+
+  function toggle(mod: string) {
+    setSel((cur) => {
+      if (mod === "NM") return cur.includes("NM") ? [] : ["NM"];
+      const without = cur.filter((m) => m !== "NM");
+      return without.includes(mod) ? without.filter((m) => m !== mod) : [...without, mod];
+    });
+  }
+
+  const matches = useMemo(() => {
+    if (sel.length === 0) return plays;
+    if (sel.includes("NM")) return plays.filter((p) => p.combo === "");
+    return plays.filter((p) => sel.every((m) => p.combo.includes(m)));
+  }, [plays, sel]);
+
+  return (
+    <section className="rounded-xl border border-line bg-surface p-5">
+      <Title>Biggest play with any mods</Title>
+      <p className="mt-1 text-[11px] text-white/35">
+        toggle mods to filter their top 100, plays containing all selected mods count
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {PICKER_MODS.map((m) => (
+          <button
+            key={m}
+            onClick={() => toggle(m)}
+            className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+              sel.includes(m)
+                ? "bg-pink text-white"
+                : "bg-black/20 text-white/60 hover:bg-black/40 hover:text-white"
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+        {sel.length > 0 && (
+          <button
+            onClick={() => setSel([])}
+            className="rounded-md px-3 py-1.5 text-xs text-white/40 transition hover:text-white"
+          >
+            clear
+          </button>
+        )}
+      </div>
+      <div className="mt-3">
+        {matches.length === 0 ? (
+          <p className="py-4 text-center text-sm text-white/40">
+            no play in their top 100 uses {sel.join(" + ")}
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-[11px] text-white/35">
+              {matches.length} of {plays.length} plays match
+            </p>
+            <ScrollBox maxH="max-h-80">
+              {matches.slice(0, 30).map((p, i) => (
+                <PlayRow key={p.beatmapId} play={p} tag={`#${i + 1}`} />
+              ))}
+            </ScrollBox>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Report({ data }: { data: PlayerReport }) {
   const u = data.user;
+  const n = data.novelty;
   const maxBand = Math.max(...data.ppBands.map((b) => b.count), 1);
   return (
     <div className="mt-6 space-y-4">
@@ -151,6 +261,8 @@ function Report({ data }: { data: PlayerReport }) {
         <Stat label="Level" value={`${u.level}`} sub={`${data.efficiency.playsPerDay}/day since join`} />
       </section>
 
+      <ModPicker plays={data.plays} />
+
       <section className="rounded-xl border border-line bg-surface p-5">
         <Title>PP profile</Title>
         <div className="mt-3 grid grid-cols-3 gap-2">
@@ -180,24 +292,70 @@ function Report({ data }: { data: PlayerReport }) {
         </p>
       </section>
 
+      {data.milestones.length > 0 && (
+        <section className="rounded-xl border border-line bg-surface p-5">
+          <Title>PP milestones</Title>
+          <p className="mt-1 text-[11px] text-white/35">
+            first play still standing worth each step
+          </p>
+          <div className="mt-3 space-y-1.5">
+            {data.milestones.map((m) => (
+              <div key={m.pp} className="flex items-center gap-3 text-sm">
+                <span className="w-16 shrink-0 text-right font-display font-bold text-pink">
+                  {m.pp}pp
+                </span>
+                <span className="min-w-0 flex-1 truncate text-white/70">{m.title}</span>
+                <span className="shrink-0 text-[11px] text-white/40">{m.ageDays}d ago</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="rounded-xl border border-line bg-surface p-5">
-        <Title>Best play by mod</Title>
+        <Title>Trivia</Title>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {data.modBests.map(
-            (m) =>
-              m.play && (
-                <PlayRow key={m.mod} play={m.play} tag={`${m.mod} ·${m.count}`} />
-              ),
+          {n.fossil && (
+            <PlayRow play={n.fossil} tag={`fossil · ${Math.floor(n.fossil.ageDays / 365) || "<1"}y`} />
           )}
+          {n.scrappiest && <PlayRow play={n.scrappiest} tag={`scrappiest · ${n.scrappiest.acc}%`} />}
+          {n.longest && (
+            <PlayRow play={n.longest} tag={`marathon · ${formatDuration(n.longest.lengthSec)}`} />
+          )}
+          {data.top && <PlayRow play={data.top} tag="magnum opus" />}
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Stat
+            label="Chokes in bests"
+            value={`${n.chokes.plays}`}
+            sub={n.chokes.plays ? `${n.chokes.misses} total misses` : "all clean"}
+          />
+          <Stat label="Comfort zone" value={`${n.comfort.lo}–${n.comfort.hi}★`} sub="middle 50% of bests" />
+          <Stat
+            label="Favorite artist"
+            value={n.favoriteArtists[0]?.artist ?? "varied"}
+            sub={n.favoriteArtists[0] ? `${n.favoriteArtists[0].count} of their bests` : "no repeats"}
+          />
+          <Stat
+            label="Recent form"
+            value={`${data.recency.last90}/100`}
+            sub="bests set in last 90d"
+          />
         </div>
       </section>
 
       <section className="rounded-xl border border-line bg-surface p-5">
         <Title>Biggest plays by combo</Title>
-        <div className="mt-3 space-y-2">
-          {data.comboBests.map((c) => (
-            <PlayRow key={c.combo} play={c.play} tag={`${c.combo === "" ? "NM" : c.combo} ·${c.count}`} />
-          ))}
+        <div className="mt-3">
+          <ScrollBox maxH="max-h-80">
+            {data.comboBests.map((c) => (
+              <PlayRow
+                key={c.combo}
+                play={c.play}
+                tag={`${c.combo === "" ? "NM" : c.combo} ·${c.count}`}
+              />
+            ))}
+          </ScrollBox>
         </div>
       </section>
 
@@ -217,12 +375,12 @@ function Report({ data }: { data: PlayerReport }) {
           </div>
         </div>
         <div className="rounded-xl border border-line bg-surface p-5">
-          <Title>Map diet (top 100 median)</Title>
+          <Title>Map diet (top 100 median, modded)</Title>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Stat label="Star rating" value={`${data.spread.srMedian}★`} />
             <Stat label="BPM (effective)" value={`${data.spread.bpmMedian}`} />
             <Stat label="Approach rate" value={`${data.spread.arMedian}`} />
-            <Stat label="Length" value={`${Math.floor(data.spread.lengthMedianSec / 60)}:${String(data.spread.lengthMedianSec % 60).padStart(2, "0")}`} />
+            <Stat label="Length" value={formatDuration(data.spread.lengthMedianSec)} />
           </div>
           {data.modUsage.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">

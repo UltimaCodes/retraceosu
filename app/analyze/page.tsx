@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Nav } from "@/app/components/Nav";
 import { parseReplay } from "@/lib/replay/parseClient";
+import { recordFrom, saveReplay } from "@/lib/history";
 import type { ParsedSummary } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { HitErrorChart } from "@/app/components/HitErrorChart";
@@ -71,20 +73,20 @@ function CoachCol({
 
 function FilePill({
   kind,
-  file,
+  label,
   emptyLabel = "none",
 }: {
   kind: string;
-  file: File | null;
+  label: string | null;
   emptyLabel?: string;
 }) {
   return (
     <span
       className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-        file ? "bg-pink/15 text-pink" : "bg-black/20 text-white/40"
+        label ? "bg-pink/15 text-pink" : "bg-black/20 text-white/40"
       }`}
     >
-      {kind}: {file ? file.name : emptyLabel}
+      {kind}: {label ?? emptyLabel}
     </span>
   );
 }
@@ -125,32 +127,60 @@ function coachFacts(s: ParsedSummary) {
 
 export default function AnalyzePage() {
   const [osu, setOsu] = useState<File | null>(null);
-  const [osr, setOsr] = useState<File | null>(null);
+  const [osrs, setOsrs] = useState<File[]>([]);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [saved, setSaved] = useState<{ ok: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ParsedSummary | null>(null);
   const [aiReview, setAiReview] = useState<string | null>(null);
   const [pp, setPp] = useState<{ pp: number; ppFc: number; stars: number } | null>(null);
 
   function take(files: FileList | File[]) {
+    const replays: File[] = [];
     for (const f of Array.from(files)) {
-      if (f.name.toLowerCase().endsWith(".osr")) setOsr(f);
+      if (f.name.toLowerCase().endsWith(".osr")) replays.push(f);
       else if (f.name.toLowerCase().endsWith(".osu")) setOsu(f);
     }
+    // a new drop replaces the queue; drop several .osr at once to bulk import
+    if (replays.length) setOsrs(replays);
   }
 
   async function run() {
-    if (!osr) return;
+    if (osrs.length === 0) return;
     setBusy(true);
     setError(null);
     setSummary(null);
     setAiReview(null);
+    setPp(null);
+    setSaved(null);
+    const total = osrs.length;
+    let savedOk = 0;
+    let last: ParsedSummary | null = null;
+    let lastError: unknown = null;
     try {
-      const osrBuffer = await osr.arrayBuffer();
-      const osuText = osu ? await osu.text() : undefined;
-      const parsed = await parseReplay(osrBuffer, osuText);
-      setSummary(parsed);
+      // a supplied .osu only makes sense for a single replay
+      const osuText = osu && total === 1 ? await osu.text() : undefined;
+      for (let i = 0; i < total; i++) {
+        if (total > 1) setProgress({ done: i, total });
+        try {
+          const parsed = await parseReplay(await osrs[i].arrayBuffer(), osuText);
+          last = parsed;
+          try {
+            await saveReplay(recordFrom(parsed));
+            savedOk++;
+          } catch {
+            // history is best-effort; the analysis itself still shows
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      if (!last) throw lastError ?? new Error("No replay could be parsed.");
+      setSummary(last);
+      setSaved({ ok: savedOk, total });
+      const parsed = last;
       // optional AI review; deterministic coaching already covers the fallback
       fetch("/api/coach", {
         method: "POST",
@@ -161,7 +191,6 @@ export default function AnalyzePage() {
         .then((j) => j?.review && setAiReview(j.review))
         .catch(() => {});
       // exact pp from the replay's stored counts
-      setPp(null);
       fetch("/api/pp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,6 +211,7 @@ export default function AnalyzePage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -212,7 +242,7 @@ export default function AnalyzePage() {
           }`}
         >
           <p className="text-white/70">
-            Drag &amp; drop your .osr here
+            Drag &amp; drop your .osr here, several at once for bulk import
             <span className="text-white/40"> (.osu optional, auto-fetched)</span>
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-3 text-sm">
@@ -231,6 +261,7 @@ export default function AnalyzePage() {
               <input
                 type="file"
                 accept=".osr"
+                multiple
                 className="hidden"
                 suppressHydrationWarning
                 onChange={(e) => e.target.files && take(e.target.files)}
@@ -238,20 +269,37 @@ export default function AnalyzePage() {
             </label>
           </div>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <FilePill kind=".osr" file={osr} />
-            <FilePill kind=".osu" file={osu} emptyLabel="auto-fetch" />
+            <FilePill
+              kind=".osr"
+              label={osrs.length === 0 ? null : osrs.length === 1 ? osrs[0].name : `${osrs.length} replays`}
+            />
+            <FilePill kind=".osu" label={osu?.name ?? null} emptyLabel="auto-fetch" />
           </div>
         </div>
 
         <div className="mt-4 flex items-center gap-3">
           <button
             onClick={run}
-            disabled={!osr || busy}
+            disabled={osrs.length === 0 || busy}
             className="rounded-lg bg-pink px-5 py-2.5 font-display font-bold text-white transition hover:bg-pink-dark disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy ? "Parsing…" : "Analyze"}
+            {busy
+              ? progress
+                ? `Parsing ${progress.done + 1}/${progress.total}…`
+                : "Parsing…"
+              : osrs.length > 1
+                ? `Analyze ${osrs.length} replays`
+                : "Analyze"}
           </button>
           {error && <span className="text-sm text-red-400">{error}</span>}
+          {saved && saved.ok > 0 && !busy && (
+            <span className="text-sm text-white/50">
+              {saved.total > 1 ? `${saved.ok}/${saved.total} saved to ` : "saved to "}
+              <Link href="/history" className="text-pink hover:underline">
+                history
+              </Link>
+            </span>
+          )}
         </div>
 
         {summary && (
