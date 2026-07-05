@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { Nav } from "@/app/components/Nav";
 import type { Profile } from "@/lib/osu/profile";
 import type { PlaystyleAnalysis } from "@/lib/playstyle";
 import { ProfileCard } from "@/app/components/ProfileCard";
@@ -13,14 +13,6 @@ type State =
   | { status: "loading" }
   | { status: "anon" }
   | { status: "ready"; data: ProfileResponse };
-
-function Wordmark() {
-  return (
-    <span className="font-display text-xl font-bold tracking-tight text-white">
-      Re<span className="text-pink">trace</span>
-    </span>
-  );
-}
 
 export default function Home() {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -40,32 +32,7 @@ export default function Home() {
 
   return (
     <>
-      <nav className="sticky top-0 z-20 border-b border-line bg-[#231b20]">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <Wordmark />
-          <div className="flex items-center gap-4">
-            <Link
-              href="/analyze"
-              className="text-sm font-medium text-white/60 transition hover:text-pink"
-            >
-              Analyze replay
-            </Link>
-            <Link
-              href="/farm"
-              className="text-sm font-medium text-white/60 transition hover:text-pink"
-            >
-              Farm maps
-            </Link>
-            {state.status === "ready" && (
-              <form action="/api/auth/logout" method="post">
-                <button className="text-sm text-white/50 transition hover:text-white">
-                  Sign out
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      </nav>
+      <Nav signOut={state.status === "ready"} />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         {state.status === "loading" && (
@@ -80,7 +47,7 @@ export default function Home() {
                 Replay analysis for osu<span className="text-pink">!</span>
               </h1>
               <p className="mx-auto mt-3 max-w-md text-white/55">
-                Sign in to profile your rank, pp and playstyle — then drop a
+                Sign in to profile your rank, pp and playstyle, then drop a
                 replay to see exactly where your accuracy and aim break down.
               </p>
               <a

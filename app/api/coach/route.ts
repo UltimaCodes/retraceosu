@@ -10,10 +10,27 @@ function apiUrl(): string {
 }
 const MODEL = process.env.COACH_MODEL ?? "llama-3.3-70b-versatile";
 
-const SYSTEM = `You are an osu!standard coach reviewing one replay from measured data.
-The facts are computed from the actual cursor/keypress stream — trust them, do not invent numbers.
-Write a short review in plain language: 2-3 sentences on what happened, then 2-3 concrete bullet points on what to practice and why.
-Reference timestamps and numbers from the facts. No greetings, no fluff, no disclaimers.`;
+const SYSTEM = `You are an osu!standard coach messaging a player directly, like a strong friend who plays at a high level. You get measured facts from one replay plus the findings a deterministic tool already flagged.
+Add value on top of those findings, do not repeat them. Pick the single thing costing the most pp or consistency, explain in mechanical terms why it is happening, then give one exact drill to fix it with concrete targets (bpm, star rating, CS or AR, accuracy) pulled from the facts. Finish with one realistic thing to chase next.
+Follow every rule below:
+- Write like a Discord message: direct, specific, a little blunt. Lowercase is fine.
+- Plain text only. No markdown, no asterisks, no bold, no headings, no bullet points.
+- Never use the em dash character. Use commas, periods, or the word "to" for ranges.
+- No greeting, no sign off, no "overall", no "in summary", no motivational filler.
+- 3 to 5 sentences. Do not restate raw numbers the player can already see unless you are drawing a conclusion from them. Never invent a number that is not in the facts.`;
+
+// strip markdown and the em dash the model leaks despite instructions
+function clean(text: string): string {
+  return text
+    .replace(/\r/g, "")
+    .replace(/\*/g, "")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-•]\s+/gm, "")
+    .replace(/[—―]/g, ", ")
+    .replace(/ ,/g, ",")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export async function POST(req: NextRequest) {
   const key = process.env.COACH_API_KEY;
@@ -26,7 +43,7 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
         model: MODEL,
-        temperature: 0.4,
+        temperature: 0.5,
         max_tokens: 1600, // reasoning models spend part of the budget on hidden thinking
         messages: [
           { role: "system", content: SYSTEM },
@@ -38,9 +55,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "upstream_failed" }, { status: 502 });
     }
     const json = await res.json();
-    const review: string | undefined = json?.choices?.[0]?.message?.content;
-    if (!review) return NextResponse.json({ error: "empty" }, { status: 502 });
-    return NextResponse.json({ review });
+    const raw: string | undefined = json?.choices?.[0]?.message?.content;
+    if (!raw) return NextResponse.json({ error: "empty" }, { status: 502 });
+    return NextResponse.json({ review: clean(raw) });
   } catch {
     return NextResponse.json({ error: "upstream_failed" }, { status: 502 });
   }

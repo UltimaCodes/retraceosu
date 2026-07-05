@@ -88,7 +88,7 @@ export type OsuScore = {
   beatmapset?: OsuBeatmapset;
 };
 
-// from POST /beatmaps/{id}/attributes — mod-adjusted difficulty
+// from POST /beatmaps/{id}/attributes, mod-adjusted difficulty
 export type OsuDifficultyAttributes = {
   star_rating: number;
   max_combo?: number;

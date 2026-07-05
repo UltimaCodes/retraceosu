@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { Nav } from "@/app/components/Nav";
 import { parseReplay } from "@/lib/replay/parseClient";
 import type { ParsedSummary } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
@@ -54,7 +54,7 @@ function CoachCol({
     <div>
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-white/40">{title}</h3>
       {items.length === 0 ? (
-        <p className="mt-2 text-sm text-white/30">—</p>
+        <p className="mt-2 text-sm text-white/30">nothing here</p>
       ) : (
         <ul className="mt-2 space-y-1.5">
           {items.map((t, i) => (
@@ -92,9 +92,12 @@ function FilePill({
 // compact measured facts for the optional AI coach
 function coachFacts(s: ParsedSummary) {
   const m = s.mechanics;
+  const b = s.beatmap;
   return {
-    map: `${s.beatmap.artist} - ${s.beatmap.title} [${s.beatmap.version}]`,
+    map: `${b.artist} - ${b.title} [${b.version}]`,
     mods: s.replay.mods,
+    mapDifficulty: { cs: +b.cs.toFixed(1), ar: +b.ar.toFixed(1), od: +b.od.toFixed(1) },
+    lengthSec: Math.round(b.lengthMs / 1000),
     accuracy: +s.replay.accuracy.toFixed(2),
     counts: { c300: m.count300, c100: m.count100, c50: m.count50, miss: m.countMiss },
     ur: Math.round(m.ur),
@@ -111,6 +114,12 @@ function coachFacts(s: ParsedSummary) {
     missTimestampsSec: m.missTimes.slice(0, 8).map((t) => Math.round(t / 1000)),
     patterns: m.patterns.map((p) => ({ name: p.name, ur: Math.round(p.ur), notes: p.count })),
     sectionUr: m.sections.map((x) => Math.round(x.ur)),
+    // what the deterministic panel already told them; the model should build past this
+    alreadyFlagged: {
+      strengths: m.coaching.strengths,
+      weakPoints: m.coaching.weaknesses,
+      practice: m.coaching.practice,
+    },
   };
 }
 
@@ -178,26 +187,12 @@ export default function AnalyzePage() {
 
   return (
     <>
-      <nav className="sticky top-0 z-20 border-b border-line bg-[#231b20]">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-          <Link href="/" className="font-display text-xl font-bold tracking-tight text-white">
-            Re<span className="text-pink">trace</span>
-          </Link>
-          <div className="flex items-center gap-4 text-sm">
-            <Link href="/farm" className="text-white/50 transition hover:text-white">
-              Farm maps
-            </Link>
-            <Link href="/" className="text-white/50 transition hover:text-white">
-              Profile
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <Nav active="/analyze" />
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         <h1 className="font-display text-2xl font-bold text-white">Replay analysis</h1>
         <p className="mt-1 text-sm text-white/50">
-          Drop a replay (.osr) — the beatmap is fetched automatically from its ID. Parsing
+          Drop a replay (.osr) and the beatmap is fetched automatically from its ID. Parsing
           runs entirely in your browser.
         </p>
 
@@ -217,8 +212,8 @@ export default function AnalyzePage() {
           }`}
         >
           <p className="text-white/70">
-            Drag & drop your .osr here
-            <span className="text-white/40"> (.osu optional — auto-fetched)</span>
+            Drag &amp; drop your .osr here
+            <span className="text-white/40"> (.osu optional, auto-fetched)</span>
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-3 text-sm">
             <label className="cursor-pointer rounded-lg bg-black/30 px-3 py-1.5 text-white/70 hover:text-white">
@@ -317,7 +312,7 @@ export default function AnalyzePage() {
 
           {summary.viewer.frames.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>Replay viewer</SectionTitle>
+              <SectionTitle>watch it back</SectionTitle>
               <div className="mt-4">
                 <ReplayViewer viewer={summary.viewer} hitErrors={summary.mechanics.hitErrors} />
               </div>
@@ -327,7 +322,7 @@ export default function AnalyzePage() {
           <section className="mt-4 rounded-xl border border-line bg-surface p-6">
             <div className="flex items-baseline justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
-                Mechanics (reconstructed)
+                what the cursor did
               </h2>
               <span className="text-xs text-white/40">
                 {formatNumber(summary.mechanics.objects)} tap objects
@@ -374,7 +369,7 @@ export default function AnalyzePage() {
 
           {summary.mechanics.sections.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>Consistency over the map</SectionTitle>
+              <SectionTitle>start to finish</SectionTitle>
               <div className="mt-4 flex h-24 items-end gap-1">
                 {summary.mechanics.sections.map((s, i) => {
                   const max = Math.max(...summary.mechanics.sections.map((x) => x.ur), 1);
@@ -398,7 +393,7 @@ export default function AnalyzePage() {
 
           {summary.mechanics.patterns.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>By pattern</SectionTitle>
+              <SectionTitle>where it breaks down</SectionTitle>
               <div className="mt-4 space-y-2.5">
                 {summary.mechanics.patterns.map((p) => {
                   const max = Math.max(...summary.mechanics.patterns.map((x) => x.ur), 1);
@@ -424,7 +419,7 @@ export default function AnalyzePage() {
             summary.mechanics.coaching.practice.length >
             0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>Coaching review</SectionTitle>
+              <SectionTitle>strengths and leaks</SectionTitle>
               <div className="mt-4 grid gap-5 sm:grid-cols-3">
                 <CoachCol title="Strengths" items={summary.mechanics.coaching.strengths} tone="good" />
                 <CoachCol title="Weak points" items={summary.mechanics.coaching.weaknesses} tone="bad" />
@@ -438,13 +433,13 @@ export default function AnalyzePage() {
 
           {aiReview && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>AI coach</SectionTitle>
+              <SectionTitle>the game plan</SectionTitle>
               <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
                 {aiReview}
               </div>
               <p className="mt-3 text-[11px] text-white/35">
-                Written by an LLM from the measured facts above — numbers come from the
-                reconstruction, not the model.
+                Reads the measured facts above and calls the one thing to fix first. Every number
+                comes from the reconstruction, not the model.
               </p>
             </section>
           )}

@@ -10,7 +10,7 @@ export function formatCompact(n: number): string {
 }
 
 export function formatRank(n: number | null): string {
-  return n == null ? "—" : `#${formatNumber(n)}`;
+  return n == null ? "-" : `#${formatNumber(n)}`;
 }
 
 export function formatPlaytime(seconds: number): string {

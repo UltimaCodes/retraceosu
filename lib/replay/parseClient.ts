@@ -1,7 +1,7 @@
 import type { ParsedSummary, ParseResponse } from "./types";
 
 // runs the decode off the main thread so the UI never blocks on big replays.
-// osuText is optional — without it the worker fetches the beatmap by its MD5.
+// osuText is optional, without it the worker fetches the beatmap by its MD5.
 export function parseReplay(
   osrBuffer: ArrayBuffer,
   osuText?: string,

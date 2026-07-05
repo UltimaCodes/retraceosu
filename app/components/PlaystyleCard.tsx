@@ -56,6 +56,12 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
 
         <div className="min-w-0">
           <div className="font-display text-3xl font-bold text-pink">{p.label}</div>
+          {p.lean && (
+            <div className="mt-0.5 text-sm text-white/50">
+              {p.lean.label === "balanced" ? "balanced aim / speed" : `${p.lean.label}-dominant`} ·{" "}
+              {Math.round(p.lean.aim * 100)}% aim
+            </div>
+          )}
           {p.traits.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {p.traits.map((t) => (
@@ -122,6 +128,22 @@ export function PlaystyleCard({ playstyle: p }: { playstyle: PlaystyleAnalysis }
               {m.combo} ×{m.count}
             </span>
           ))}
+        </div>
+      )}
+
+      {p.tendencies.length > 0 && (
+        <div className="mt-5 border-t border-line pt-4">
+          <h4 className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+            How you play
+          </h4>
+          <ul className="mt-2 space-y-1.5">
+            {p.tendencies.map((t, i) => (
+              <li key={i} className="flex gap-2 text-sm text-white/75">
+                <span className="text-pink">›</span>
+                <span>{t}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

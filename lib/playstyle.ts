@@ -28,10 +28,14 @@ export type MapHighlight = {
   metric: string;
 };
 
+export type Lean = { aim: number; label: "aim" | "speed" | "balanced" };
+
 export type PlaystyleAnalysis = {
   sampleSize: number;
   label: string;
   traits: string[];
+  tendencies: string[]; // human readouts of how they actually play
+  lean: Lean | null; // aim vs speed share of difficulty
   skill: SkillDimensions; // anchored to global rank, shaped by tendencies
   highlights: Partial<Record<keyof SkillDimensions, MapHighlight>>;
   sr: Spread; // mod-adjusted star rating
@@ -56,6 +60,8 @@ const EMPTY: PlaystyleAnalysis = {
   sampleSize: 0,
   label: "Unknown",
   traits: [],
+  tendencies: [],
+  lean: null,
   skill: { aim: 0, speed: 0, stamina: 0, reading: 0, accuracy: 0, tech: 0 },
   highlights: {},
   sr: ZERO,
@@ -291,10 +297,46 @@ export function analyzeTopPlays(
   if (accH) highlights.accuracy = highlight(accH.play, `${(accH.value * 100).toFixed(2)}% acc`);
   if (techH) highlights.tech = highlight(techH.play, `${Math.round(techH.value * 100)}% sliders`);
 
+  const accStats = { avg: avgAcc, best: Math.max(...accs), worst: Math.min(...accs), stdev: stdev(accs) };
+  const ppStats = {
+    top: pps.length ? Math.max(...pps) : 0,
+    median: pps.length ? median(pps) : 0,
+    floor: pps.length ? Math.min(...pps) : 0,
+  };
+  const noMissRate = missCounts.filter((m) => m === 0).length / plays.length;
+  const last90 = ages.filter((d) => d <= 90).length;
+  const modCombos = Object.entries(combos)
+    .map(([combo, count]) => ({ combo, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const aimMed = aimVals.length ? median(aimVals) : 0;
+  const speedMed = speedVals.length ? median(speedVals) : 0;
+  const leanVal = aimMed + speedMed > 0 ? aimMed / (aimMed + speedMed) : null;
+  const lean: Lean | null =
+    leanVal == null
+      ? null
+      : {
+          aim: Math.round(leanVal * 100) / 100,
+          label: leanVal >= 0.54 ? "aim" : leanVal <= 0.46 ? "speed" : "balanced",
+        };
+
+  const tendencies = deriveTendencies({
+    lean,
+    acc: accStats,
+    pp: ppStats,
+    topCombo: modCombos[0] ?? null,
+    noMissRate,
+    last90,
+    sampleSize: plays.length,
+  });
+
   return {
     sampleSize: plays.length,
     label: deriveLabel(skill),
     traits: deriveTraits(bpmSpread.median, circleRatio, lengthSpread.median, avgAcc, modList),
+    tendencies,
+    lean,
     skill,
     highlights,
     sr: srSpread,
@@ -304,30 +346,54 @@ export function analyzeTopPlays(
     od: spread(ods),
     lengthSec: lengthSpread,
     circleRatio,
-    accuracy: {
-      avg: avgAcc,
-      best: Math.max(...accs),
-      worst: Math.min(...accs),
-      stdev: stdev(accs),
-    },
-    pp: {
-      top: pps.length ? Math.max(...pps) : 0,
-      median: pps.length ? median(pps) : 0,
-      floor: pps.length ? Math.min(...pps) : 0,
-    },
-    noMissRate: missCounts.filter((m) => m === 0).length / plays.length,
+    accuracy: accStats,
+    pp: ppStats,
+    noMissRate,
     avgMisses: mean(missCounts),
     mods: modList,
-    modCombos: Object.entries(combos)
-      .map(([combo, count]) => ({ combo, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5),
+    modCombos,
     recency: {
       newestDays: Math.floor(Math.min(...ages)),
       oldestDays: Math.floor(Math.max(...ages)),
-      last90: ages.filter((d) => d <= 90).length,
+      last90,
     },
   };
+}
+
+type TendencyInputs = {
+  lean: Lean | null;
+  acc: { avg: number; best: number; worst: number; stdev: number };
+  pp: { top: number; median: number; floor: number };
+  topCombo: { combo: string; count: number } | null;
+  noMissRate: number;
+  last90: number;
+  sampleSize: number;
+};
+
+// plain-language read of how someone actually plays, from their top-play spread
+function deriveTendencies(m: TendencyInputs): string[] {
+  const t: string[] = [];
+  if (m.lean) {
+    const pct = Math.round(m.lean.aim * 100);
+    if (m.lean.label === "aim") t.push(`Aim carries your pp, roughly ${pct}% of the difficulty you play is aim over speed.`);
+    else if (m.lean.label === "speed") t.push(`Speed carries your pp, only about ${pct}% of what you play is aim.`);
+    else t.push(`You sit balanced between aim and speed (${pct}% aim).`);
+  }
+  if (m.acc.stdev <= 0.7 && m.acc.avg >= 97)
+    t.push(`Accuracy is your anchor, ${m.acc.avg.toFixed(2)}% average with a tight ${m.acc.stdev.toFixed(2)} spread.`);
+  else if (m.acc.stdev >= 1.4)
+    t.push(`Accuracy is streaky, it swings ${m.acc.worst.toFixed(1)}% to ${m.acc.best.toFixed(1)}% across your bests.`);
+  if (m.pp.median > 0 && m.pp.top >= m.pp.median * 1.6)
+    t.push(`Top-heavy set: your ${Math.round(m.pp.top)}pp best towers over your ${Math.round(m.pp.median)}pp median, so most gains come from lifting the bottom.`);
+  if (m.topCombo && m.topCombo.combo !== "NM") {
+    const pct = Math.round((m.topCombo.count / m.sampleSize) * 100);
+    if (pct >= 45) t.push(`You farm ${m.topCombo.combo}, it is on ${pct}% of your top plays.`);
+  }
+  if (m.noMissRate >= 0.8) t.push(`You hold combo well, ${Math.round(m.noMissRate * 100)}% of your bests are full combos.`);
+  else if (m.noMissRate <= 0.4) t.push(`Chokes cost you, only ${Math.round(m.noMissRate * 100)}% of your bests are clean.`);
+  if (m.last90 >= Math.ceil(m.sampleSize * 0.4)) t.push(`In form: ${m.last90} of your top ${m.sampleSize} were set in the last 90 days.`);
+  else if (m.last90 <= Math.max(2, Math.floor(m.sampleSize * 0.1))) t.push(`Coasting: only ${m.last90} of your bests are from the last 90 days.`);
+  return t.slice(0, 6);
 }
 
 function deriveTraits(

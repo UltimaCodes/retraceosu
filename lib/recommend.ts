@@ -10,8 +10,8 @@ export type FarmProfile = {
   combos: ComboProfile[]; // top combos by usage, most-played first
   srLo: number; // nomod SR comfort band for candidates
   srHi: number;
-  floor: number; // lowest pp in top plays — the bar to clear
-  top: number; // best play pp — realism ceiling for recommendations
+  floor: number; // lowest pp in top plays, the bar to clear
+  top: number; // best play pp, realism ceiling for recommendations
   owned: number[]; // beatmap ids already in top plays
   sampleIds: number[]; // highest-pp beatmap ids, for measuring aim/speed lean
 };
@@ -85,7 +85,7 @@ export function deriveFarmProfile(scores: OsuScore[]): FarmProfile | null {
 
   return {
     combos,
-    // FCs happen below your ceiling — band ends near p80, not at your hardest scrape
+    // FCs happen below your ceiling, band ends near p80, not at your hardest scrape
     srLo: +quantile(srs, 0.35).toFixed(2),
     srHi: +(quantile(srs, 0.8) + 0.1).toFixed(2),
     floor: scores.length >= 100 ? Math.min(...pps) : 0,

@@ -3,6 +3,7 @@ import { OsuApiError, osuFetch } from "@/lib/osu/client";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { deriveFarmProfile, pickCandidates, type SearchSet } from "@/lib/recommend";
 import { aimLean, calcPp, fetchOsuFile } from "@/lib/server/rosu";
+import { scoreCombo } from "@/lib/osu/scoreMods";
 import { mapLimit } from "@/lib/osu/difficulty";
 
 export type Recommendation = {
@@ -20,6 +21,22 @@ export type Recommendation = {
   lean: "aim" | "speed" | "balanced";
 };
 
+// a top-100 play left pp on the table: a choke, or accuracy genuinely low enough to push
+export type Choke = {
+  beatmapId: number;
+  title: string;
+  version: string;
+  mods: string;
+  stars: number;
+  currentPp: number;
+  currentAcc: number;
+  misses: number;
+  potentialPp: number;
+  gain: number;
+  reason: "choke" | "acc";
+  targetAcc: number;
+};
+
 const cache = new Map<number, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
 
@@ -34,14 +51,65 @@ const median = (v: number[]) => {
 const leanTag = (l: number): Recommendation["lean"] =>
   l >= 0.54 ? "aim" : l <= 0.46 ? "speed" : "balanced";
 
+const missOf = (s: OsuScore) => s.statistics?.count_miss ?? s.statistics?.miss ?? 0;
+
+// price the plays you already own but underperformed, only when there's real pp to gain
+async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
+  const cands = best
+    .filter((s) => s.pp != null)
+    .filter((s) => missOf(s) > 0 || s.accuracy * 100 < 96) // a real choke, or acc actually bad
+    .sort((a, b) => missOf(b) - missOf(a) || a.accuracy - b.accuracy)
+    .slice(0, 30);
+
+  const out = (
+    await mapLimit(cands, 6, async (s) => {
+      const text = await fetchOsuFile(s.beatmap.id);
+      if (!text) return null;
+      const combo = scoreCombo(s.mods);
+      const curAcc = s.accuracy * 100;
+      const miss = missOf(s);
+      const curPp = s.pp as number;
+      try {
+        const reason: Choke["reason"] = miss > 0 ? "choke" : "acc";
+        // choke: same acc but no misses / full combo. bad acc: push acc a realistic notch
+        const targetAcc = reason === "choke" ? curAcc : Math.min(99, Math.round((curAcc + 2) * 10) / 10);
+        const potentialPp = calcPp(text, { mods: combo || 0, accuracy: targetAcc, misses: 0 }).pp;
+        const gain = potentialPp - curPp;
+        if (gain < Math.max(10, curPp * 0.04)) return null;
+        return {
+          beatmapId: s.beatmap.id,
+          title: s.beatmapset?.title ?? s.beatmap.version,
+          version: s.beatmap.version,
+          mods: combo || "NM",
+          stars: +s.beatmap.difficulty_rating.toFixed(2),
+          currentPp: Math.round(curPp),
+          currentAcc: +curAcc.toFixed(2),
+          misses: miss,
+          potentialPp: Math.round(potentialPp),
+          gain: Math.round(gain),
+          reason,
+          targetAcc: +targetAcc.toFixed(1),
+        } as Choke;
+      } catch {
+        return null;
+      }
+    })
+  ).filter((c): c is Choke => c != null);
+  out.sort((a, b) => b.gain - a.gain);
+  return out.slice(0, 25);
+}
+
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("osu_token")?.value;
   if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const refresh = req.nextUrl.searchParams.get("refresh") === "1";
 
   try {
     const me = await osuFetch<OsuMe>(token, "/me/osu");
-    const hit = cache.get(me.id);
-    if (hit && Date.now() - hit.at < TTL) return NextResponse.json(hit.body);
+    if (!refresh) {
+      const hit = cache.get(me.id);
+      if (hit && Date.now() - hit.at < TTL) return NextResponse.json(hit.body);
+    }
 
     const best = await osuFetch<OsuScore[]>(
       token,
@@ -67,7 +135,7 @@ export async function GET(req: NextRequest) {
       token,
       `/beatmapsets/search?m=0&s=ranked&sort=plays_desc&q=${q}`,
     );
-    const candidates = pickCandidates(search.beatmapsets ?? [], profile);
+    const candidates = pickCandidates(search.beatmapsets ?? [], profile, 60);
 
     const ceiling = profile.top * CEILING;
     const scored = (
@@ -101,7 +169,7 @@ export async function GET(req: NextRequest) {
               },
             };
           } catch {
-            // unparseable under this combo — skip
+            // unparseable under this combo, skip
           }
         }
         return pick;
@@ -115,6 +183,8 @@ export async function GET(req: NextRequest) {
       return b.rec.expectedPp * fit(b.lean) - a.rec.expectedPp * fit(a.lean);
     });
 
+    const chokes = await computeChokes(best);
+
     const body = {
       profile: {
         combos: profile.combos.map((c) => ({ mods: c.mods || "NM", acc: c.acc })),
@@ -124,7 +194,8 @@ export async function GET(req: NextRequest) {
         srHi: profile.srHi,
         lean: userLean == null ? null : leanTag(userLean),
       },
-      recommendations: scored.slice(0, 12).map((s) => s.rec),
+      recommendations: scored.slice(0, 50).map((s) => s.rec),
+      chokes,
     };
     cache.set(me.id, { at: Date.now(), body });
     return NextResponse.json(body);

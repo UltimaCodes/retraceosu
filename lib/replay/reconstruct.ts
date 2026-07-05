@@ -134,7 +134,7 @@ export function reconstruct(
     }
 
     // stable note-lock: while this object was pending, presses that missed it
-    // spatially did nothing — they can never carry over to a later object
+    // spatially did nothing, they can never carry over to a later object
     if (!hit) ei = j;
 
     results.push(hit ?? { time: obj.time, isSlider: obj.isSlider, judgement: "miss", error: null });
@@ -160,24 +160,24 @@ function deriveInsights(
 
   if (Math.abs(meanError) >= 8) {
     out.push(
-      `You hit ${Math.abs(meanError).toFixed(1)}ms ${meanError < 0 ? "early" : "late"} on average — nudge your timing ${meanError < 0 ? "later" : "earlier"}.`,
+      `You hit ${Math.abs(meanError).toFixed(1)}ms ${meanError < 0 ? "early" : "late"} on average, nudge your timing${meanError < 0 ? "later" : "earlier"}.`,
     );
   } else {
     out.push(`Timing is well-centered (${meanError >= 0 ? "+" : ""}${meanError.toFixed(1)}ms bias).`);
   }
 
   const ePct = Math.round(earlyRate * 100);
-  if (ePct >= 65) out.push(`You rush — ${ePct}% of hits land early.`);
-  else if (ePct <= 35) out.push(`You drag — ${100 - ePct}% of hits land late.`);
+  if (ePct >= 65) out.push(`You rush, ${ePct}% of hits land early.`);
+  else if (ePct <= 35) out.push(`You drag, ${100 - ePct}% of hits land late.`);
 
   if (hits.length >= 20) {
     const mid = Math.floor(hits.length / 2);
     const u1 = urOf(hits.slice(0, mid).map((h) => h.error));
     const u2 = urOf(hits.slice(mid).map((h) => h.error));
     if (u2 > u1 * 1.25)
-      out.push(`Consistency drops in the back half (UR ${u1.toFixed(0)} → ${u2.toFixed(0)}) — likely stamina or focus.`);
+      out.push(`Consistency drops in the back half (UR ${u1.toFixed(0)} → ${u2.toFixed(0)}), likely stamina or focus.`);
     else if (u1 > u2 * 1.25)
-      out.push(`You settle in — UR improves ${u1.toFixed(0)} → ${u2.toFixed(0)} across the map.`);
+      out.push(`You settle in, UR improves${u1.toFixed(0)} → ${u2.toFixed(0)} across the map.`);
     else out.push(`Consistency holds steady (UR ${u1.toFixed(0)} → ${u2.toFixed(0)}).`);
   }
 

@@ -114,9 +114,10 @@ export function computePatterns(
 
 function practiceFor(pattern: string): string {
   if (pattern.startsWith("Stream") || pattern === "Bursts")
-    return "Practice finger-control / stream maps just below your top BPM.";
-  if (pattern === "Jumps") return "Practice spaced-jump / aim maps to tighten jump timing.";
-  return "Practice control maps to steady your spacing.";
+    return "Drop stream / finger-control maps about 10 to 20 bpm below your peak and rebuild them clean before pushing tempo.";
+  if (pattern === "Jumps")
+    return "Grind spaced-jump aim maps a notch above your comfort spacing, focusing on stopping the cursor on the circle rather than swiping through.";
+  return "Play flow and control maps to steady your spacing before adding speed.";
 }
 
 export function deriveCoaching(
@@ -152,7 +153,7 @@ export function deriveCoaching(
     }
   } else if (eligible.length === 1) {
     strengths.push(
-      `This map is mostly ${eligible[0].name.toLowerCase()} — your UR there is ${eligible[0].ur.toFixed(0)}.`,
+      `This map is mostly ${eligible[0].name.toLowerCase()}, your UR there is ${eligible[0].ur.toFixed(0)}.`,
     );
   }
 
@@ -175,38 +176,38 @@ export function deriveCoaching(
     }
   }
 
-  // aim signals — only with a real jump sample behind them
+  // aim signals, only with a real jump sample behind them
   if (aim && aim.jumpsSampled >= 15) {
     if (aim.undershootRate >= 0.35) {
       weaknesses.push(
-        `You undershoot jumps — ${Math.round(aim.undershootRate * 100)}% of spaced hits land short of the target.`,
+        `You undershoot jumps, ${Math.round(aim.undershootRate * 100)}% of spaced hits land short of the target.`,
       );
       practice.push("Practice snap aim: overshoot-focused jump maps, slightly larger spacing than comfortable.");
     } else if (aim.overshootRate >= 0.35) {
       weaknesses.push(
-        `You overshoot jumps — ${Math.round(aim.overshootRate * 100)}% of spaced hits sail past centre.`,
+        `You overshoot jumps, ${Math.round(aim.overshootRate * 100)}% of spaced hits sail past centre.`,
       );
       practice.push("Practice controlled aim: lower spacing, focus on stopping on the circle.");
     }
   }
   if (aim && aim.edgeHitRate >= 0.3) {
     weaknesses.push(
-      `${Math.round(aim.edgeHitRate * 100)}% of your hits land on the circle's edge — aim is loose even when timing is fine.`,
+      `${Math.round(aim.edgeHitRate * 100)}% of your hits land on the circle's edge, aim is loose even when timing is fine.`,
     );
     practice.push("Play a notch smaller CS or slower maps focusing on cursor precision.");
   } else if (aim && aim.avgOffset > 0 && aim.avgOffset <= 0.45) {
-    strengths.push(`Aim is tight — hits average ${Math.round(aim.avgOffset * 100)}% from centre.`);
+    strengths.push(`Aim is tight, hits average ${Math.round(aim.avgOffset * 100)}% from centre.`);
   }
 
   if (sliderBreaks > 0) {
-    weaknesses.push(`${sliderBreaks} slider break${sliderBreaks > 1 ? "s" : ""} — you drop the follow circle after the head.`);
+    weaknesses.push(`${sliderBreaks} slider break${sliderBreaks > 1 ? "s" : ""}, you drop the follow circle after the head.`);
     practice.push("Hold sliders to the end; practice slider-heavy maps at low BPM.");
   }
 
   if (missTimes.length > 0) {
     const shown = missTimes.slice(0, 4).map(mmss).join(", ");
     weaknesses.push(
-      `Miss${missTimes.length > 1 ? "es" : ""} at ${shown}${missTimes.length > 4 ? ` (+${missTimes.length - 4} more)` : ""} — scrub the viewer there.`,
+      `Miss${missTimes.length > 1 ? "es" : ""} at ${shown}${missTimes.length > 4 ? ` (+${missTimes.length - 4} more)` : ""}, scrub the viewer there.`,
     );
   }
 

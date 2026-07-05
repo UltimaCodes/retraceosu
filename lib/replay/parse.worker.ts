@@ -23,7 +23,7 @@ async function fetchBeatmap(md5: string): Promise<string> {
       throw new Error("Sign in with osu! to auto-fetch the beatmap, or drop the .osu yourself.");
     if (res.status === 404)
       throw new Error("Couldn't find this map online (unsubmitted?). Drop the .osu yourself.");
-    throw new Error("Beatmap fetch failed — drop the .osu yourself.");
+    throw new Error("Beatmap fetch failed, drop the .osu yourself.");
   }
   return (await res.json()).osu as string;
 }
@@ -106,7 +106,7 @@ ctx.onmessage = async (e: MessageEvent<Request>) => {
     );
     if (score.info.rulesetId !== 0) {
       throw new Error(
-        `Retrace only supports osu!standard — this replay is ${MODE_NAMES[score.info.rulesetId] ?? "another mode"}.`,
+        `Retrace only supports osu!standard, this replay is ${MODE_NAMES[score.info.rulesetId] ?? "another mode"}.`,
       );
     }
     const osuText = e.data.osuText ?? (await fetchBeatmap(score.info.beatmapHashMD5));
