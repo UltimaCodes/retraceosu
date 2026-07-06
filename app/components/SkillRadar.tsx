@@ -65,14 +65,24 @@ export function SkillRadar({
         <polygon points={data} fill="#ff66ab40" stroke="#ff66ab" strokeWidth="2" />
         {AXES.map((a, i) => {
           const [dx, dy] = point(i, skill[a.key]);
-          const [hx, hy] = point(i, 100);
+          const [hx, hy] = point(i, 112);
           return (
             <g key={`hit-${a.key}`}>
               <circle cx={dx} cy={dy} r={hover === i ? 4 : 2.5} fill="#ff66ab" />
+              {/* hover zones on both the data dot and the label */}
+              <circle
+                cx={dx}
+                cy={dy}
+                r={16}
+                fill="transparent"
+                className={highlights[a.key] ? "cursor-pointer" : ""}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+              />
               <circle
                 cx={hx}
                 cy={hy}
-                r={28}
+                r={22}
                 fill="transparent"
                 className={highlights[a.key] ? "cursor-pointer" : ""}
                 onMouseEnter={() => setHover(i)}

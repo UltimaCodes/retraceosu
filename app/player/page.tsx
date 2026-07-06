@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Nav } from "@/app/components/Nav";
 import { ScrollBox } from "@/app/components/ScrollBox";
 import { ReportSkeleton } from "@/app/components/Skeleton";
+import { Sparkline } from "@/app/components/Sparkline";
 import { formatNumber, formatPlaytime, formatJoinDate, formatDuration, flagEmoji } from "@/lib/format";
 import type { PlayerReport, PlayHighlight } from "@/lib/informatics/player";
 
@@ -252,6 +253,11 @@ function Report({ data }: { data: PlayerReport }) {
             {u.globalRank ? `#${formatNumber(u.globalRank)}` : "unranked"}
             {u.countryRank ? ` · ${u.countryCode} #${formatNumber(u.countryRank)}` : ""}
           </div>
+          {data.rankHistory.length >= 2 && (
+            <div className="mt-1 w-32" title="global rank, last 90 days">
+              <Sparkline values={data.rankHistory} />
+            </div>
+          )}
         </div>
       </section>
 

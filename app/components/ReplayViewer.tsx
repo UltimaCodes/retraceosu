@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ViewerData, ViewerFrame } from "@/lib/replay/types";
 import { formatDuration } from "@/lib/format";
+
+export type ViewerHandle = { seekTo: (t: number) => void };
 
 // internal canvas resolution + the gameplay area (512x384 playfield centred in 640x480)
 const RES_W = 1024;
@@ -46,13 +56,14 @@ function cursorAt(frames: ViewerFrame[], t: number) {
   return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, k: a.k };
 }
 
-export function ReplayViewer({
-  viewer,
-  hitErrors,
-}: {
-  viewer: ViewerData;
-  hitErrors: { time: number; error: number }[];
-}) {
+export const ReplayViewer = forwardRef<
+  ViewerHandle,
+  {
+    viewer: ViewerData;
+    hitErrors: { time: number; error: number }[];
+    ghostFrames?: ViewerFrame[] | null;
+  }
+>(function ReplayViewer({ viewer, hitErrors, ghostFrames }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
@@ -147,6 +158,31 @@ export function ReplayViewer({
         ctx.globalAlpha = 1;
       }
 
+      // ghost replay first, so the live cursor draws on top
+      if (ghostFrames && ghostFrames.length) {
+        const glo = lowerBound(ghostFrames, t - TRAIL_MS);
+        const ghi = lowerBound(ghostFrames, t);
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        for (let i = Math.max(1, glo + 1); i <= ghi && i < ghostFrames.length; i++) {
+          const a = ghostFrames[i - 1];
+          const b = ghostFrames[i];
+          const fade = Math.max(0, 1 - (t - b.t) / TRAIL_MS);
+          ctx.strokeStyle = `rgba(139,224,74,${fade * 0.55})`;
+          ctx.beginPath();
+          ctx.moveTo(px(a.x), py(a.y));
+          ctx.lineTo(px(b.x), py(b.y));
+          ctx.stroke();
+        }
+        const g = cursorAt(ghostFrames, t);
+        if (g) {
+          ctx.fillStyle = "rgba(139,224,74,0.85)";
+          ctx.beginPath();
+          ctx.arc(px(g.x), py(g.y), 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       // cursor trail
       const frames = viewer.frames;
       const lo = lowerBound(frames, t - TRAIL_MS);
@@ -172,7 +208,7 @@ export function ReplayViewer({
         ctx.fill();
       }
     },
-    [viewer],
+    [viewer, ghostFrames],
   );
 
   // update everything for a new time without a React render
@@ -191,6 +227,17 @@ export function ReplayViewer({
   const seek = useCallback(
     (nt: number) => present(Math.max(0, Math.min(length, nt))),
     [present, length],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      seekTo: (t: number) => {
+        setPlaying(false);
+        seek(t);
+      },
+    }),
+    [seek],
   );
 
   useEffect(() => {
@@ -301,7 +348,8 @@ export function ReplayViewer({
       </div>
       <p className="mt-1 text-[11px] text-white/35">
         Cursor trace · × = miss, ○ = 100/50 · click the timeline to jump there.
+        {ghostFrames?.length ? " Green cursor is the ghost replay." : ""}
       </p>
     </div>
   );
-}
+});

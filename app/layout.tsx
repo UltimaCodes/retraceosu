@@ -15,9 +15,30 @@ const quicksand = Quicksand({
   variable: "--font-quicksand",
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
-  title: "Retrace",
-  description: "Replay autopsy and playstyle profiling for osu!",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Retrace",
+    template: "%s · Retrace",
+  },
+  description:
+    "Replay autopsy for osu!standard: hit-by-hit reconstruction, tap and aim style, farm maps priced by real pp gain, player and country deep dives.",
+  applicationName: "Retrace",
+  openGraph: {
+    title: "Retrace",
+    description:
+      "Drop an .osr, get the autopsy. UR, timing bias, tap style, miss map and a coach that reads the numbers.",
+    url: SITE_URL,
+    siteName: "Retrace",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Retrace",
+    description: "Replay autopsy and informatics for osu!standard.",
+  },
 };
 
 export default function RootLayout({

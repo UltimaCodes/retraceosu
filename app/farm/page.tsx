@@ -65,12 +65,61 @@ type State =
   | { status: "ready"; data: FarmData };
 
 const PAGE = 25;
+const HIDDEN_KEY = "retrace-hidden-recs";
+
+type LenFilter = "any" | "short" | "long";
+type BpmFilter = "any" | "slow" | "fast";
+
+function Chip({
+  on,
+  label,
+  onClick,
+}: {
+  on: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+        on ? "bg-pink text-white" : "bg-black/20 text-white/50 hover:text-white"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function FarmPage() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [tab, setTab] = useState<"recs" | "chokes">("recs");
   const [limit, setLimit] = useState(PAGE);
   const [refreshing, setRefreshing] = useState(false);
+  const [lenF, setLenF] = useState<LenFilter>("any");
+  const [bpmF, setBpmF] = useState<BpmFilter>("any");
+  const [hidden, setHidden] = useState<Set<number>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]") as number[]);
+    } catch {
+      return new Set();
+    }
+  });
+
+  function hide(id: number) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function unhideAll() {
+    localStorage.removeItem(HIDDEN_KEY);
+    setHidden(new Set());
+  }
 
   async function load(refresh = false) {
     if (refresh) setRefreshing(true);
@@ -189,11 +238,39 @@ export default function FarmPage() {
             </div>
 
             {tab === "recs" ? (
-              <RecsBox
-                recs={state.data.recommendations}
-                limit={limit}
-                onMore={() => setLimit((l) => l + PAGE)}
-              />
+              <>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-white/35">length</span>
+                  <Chip on={lenF === "any"} label="any" onClick={() => setLenF("any")} />
+                  <Chip on={lenF === "short"} label="under 2:00" onClick={() => setLenF("short")} />
+                  <Chip on={lenF === "long"} label="2:00+" onClick={() => setLenF("long")} />
+                  <span className="ml-2 text-[11px] text-white/35">bpm</span>
+                  <Chip on={bpmF === "any"} label="any" onClick={() => setBpmF("any")} />
+                  <Chip on={bpmF === "slow"} label="<200" onClick={() => setBpmF("slow")} />
+                  <Chip on={bpmF === "fast"} label="200+" onClick={() => setBpmF("fast")} />
+                  {hidden.size > 0 && (
+                    <button
+                      onClick={unhideAll}
+                      className="ml-auto text-[11px] text-white/40 transition hover:text-white"
+                    >
+                      {hidden.size} hidden · reset
+                    </button>
+                  )}
+                </div>
+                <RecsBox
+                  recs={state.data.recommendations
+                    .filter((r) => !hidden.has(r.beatmapId))
+                    .filter((r) =>
+                      lenF === "any" ? true : lenF === "short" ? r.lengthSec < 120 : r.lengthSec >= 120,
+                    )
+                    .filter((r) =>
+                      bpmF === "any" ? true : bpmF === "fast" ? r.bpm >= 200 : r.bpm < 200,
+                    )}
+                  limit={limit}
+                  onMore={() => setLimit((l) => l + PAGE)}
+                  onHide={hide}
+                />
+              </>
             ) : (
               <ChokesBox chokes={state.data.chokes} />
             )}
@@ -214,15 +291,17 @@ function RecsBox({
   recs,
   limit,
   onMore,
+  onHide,
 }: {
   recs: Rec[];
   limit: number;
   onMore: () => void;
+  onHide: (id: number) => void;
 }) {
   if (recs.length === 0) {
     return (
       <p className="mt-4 text-sm text-white/50">
-        Nothing beats your pp floor in this pool right now, try refreshing later (the pool rotates
+        Nothing matches here right now, loosen the filters or refresh later (the pool rotates
         with popular maps).
       </p>
     );
@@ -260,6 +339,17 @@ function RecsBox({
               <div className="font-display text-xl font-bold text-pink">~{r.expectedPp}pp</div>
               <div className="text-[11px] text-[#8be04a]">+{r.netGain} to your total</div>
             </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onHide(r.beatmapId);
+              }}
+              title="hide this map"
+              className="shrink-0 self-start rounded p-1 text-white/25 transition hover:bg-black/40 hover:text-red-300"
+            >
+              ✕
+            </button>
           </a>
         ))}
       </div>

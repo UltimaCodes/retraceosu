@@ -38,6 +38,7 @@ export type PlayerReport = {
     supporter: boolean;
   };
   top: PlayHighlight | null;
+  rankHistory: number[]; // last 90 days of global rank
   plays: PlayHighlight[]; // full top-100 by pp desc, for the mod picker
   comboBests: ComboBest[];
   ppBands: PpBand[];
@@ -245,6 +246,7 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[], attrs?: AttrMap
       supporter: user.is_supporter,
     },
     top: byPp[0] ?? null,
+    rankHistory: user.rank_history?.data ?? [],
     plays: byPp,
     comboBests,
     ppBands,

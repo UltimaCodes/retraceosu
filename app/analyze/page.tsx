@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { Nav } from "@/app/components/Nav";
 import { parseReplay } from "@/lib/replay/parseClient";
 import { recordFrom, saveReplay } from "@/lib/history";
-import type { ParsedSummary, ViewerObject } from "@/lib/replay/types";
+import type { ParsedSummary, ViewerFrame, ViewerObject } from "@/lib/replay/types";
+import type { Section } from "@/lib/replay/reconstruct";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { HitErrorChart } from "@/app/components/HitErrorChart";
-import { ReplayViewer } from "@/app/components/ReplayViewer";
+import { ReplayViewer, type ViewerHandle } from "@/app/components/ReplayViewer";
 
 // round to 1 dp, dropping a trailing .0 (e.g. 8.800001 -> "8.8", 4 -> "4")
 function r1(n: number): string {
@@ -145,6 +146,62 @@ function coachFacts(s: ParsedSummary) {
   };
 }
 
+// UR bars with the map's strain curve behind them, plus the verdict that matters:
+// do you drop the hard parts (skill wall) or the easy parts (focus leak)?
+function SectionsChart({ sections, strains }: { sections: Section[]; strains?: number[] }) {
+  const max = Math.max(...sections.map((x) => x.ur), 1);
+  const aligned = strains && strains.length === sections.length ? strains : null;
+
+  let verdict: string | null = null;
+  if (aligned && sections.length >= 4) {
+    let worst = 0;
+    for (let i = 1; i < sections.length; i++) if (sections[i].ur > sections[worst].ur) worst = i;
+    const st = aligned[worst];
+    verdict =
+      st >= 70
+        ? "Your shakiest stretch lines up with the map's difficulty peak. That's a skill wall, grind slightly harder maps and it moves."
+        : st <= 40
+          ? "Your shakiest stretch is not where the map peaks. You're dropping the easy parts, that's focus slipping, not skill missing."
+          : "Your shakiest stretch sits at medium difficulty, part ceiling, part concentration.";
+  }
+
+  return (
+    <>
+      <div className="mt-4 flex h-24 items-end gap-1">
+        {sections.map((s, i) => (
+          <div key={i} className="relative h-full flex-1">
+            {aligned && (
+              <div
+                className="absolute bottom-0 w-full rounded-t bg-white/10"
+                style={{ height: `${Math.max(aligned[i], 2)}%` }}
+              />
+            )}
+            <div
+              className={`absolute bottom-0 w-full rounded-t ${s.misses > 0 ? "bg-red-400" : "bg-pink"}`}
+              style={{ height: `${Math.max((s.ur / max) * 100, 3)}%` }}
+              title={`${Math.round(s.fromMs / 1000)}s · UR ${s.ur.toFixed(0)}${s.misses ? ` · ${s.misses} miss` : ""}${aligned ? ` · strain ${aligned[i]}` : ""}`}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[11px] text-white/35">
+        <span>start</span>
+        <span>
+          UR per section · red = misses
+          {aligned ? " · grey = map difficulty" : ""}
+        </span>
+        <span>end</span>
+      </div>
+      {verdict && (
+        <p className="mt-3 flex gap-2 text-sm text-white/75">
+          <span className="text-pink">›</span>
+          <span>{verdict}</span>
+        </p>
+      )}
+    </>
+  );
+}
+
 // misses and 100s on the playfield, so side bias is visible at a glance
 function MissMap({ objects }: { objects: ViewerObject[] }) {
   const misses = objects.filter((o) => o.j === 3);
@@ -263,7 +320,42 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<ParsedSummary | null>(null);
   const [aiReview, setAiReview] = useState<string | null>(null);
-  const [pp, setPp] = useState<{ pp: number; ppFc: number; stars: number } | null>(null);
+  const [pp, setPp] = useState<{
+    pp: number;
+    ppFc: number;
+    stars: number;
+    strains?: number[];
+  } | null>(null);
+  const [ghost, setGhost] = useState<{
+    frames: ViewerFrame[];
+    player: string;
+    acc: number;
+    ur: number;
+  } | null>(null);
+  const [ghostErr, setGhostErr] = useState<string | null>(null);
+  const viewerRef = useRef<ViewerHandle>(null);
+
+  async function loadGhost(e: ChangeEvent<HTMLInputElement>, base: ParsedSummary) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setGhostErr(null);
+    try {
+      const g = await parseReplay(await f.arrayBuffer(), base.osuText);
+      if (g.replay.beatmapMD5 !== base.replay.beatmapMD5) {
+        setGhostErr("that replay is on a different map");
+        return;
+      }
+      setGhost({
+        frames: g.viewer.frames,
+        player: g.replay.player,
+        acc: Math.round(g.replay.accuracy * 100) / 100,
+        ur: Math.round(g.mechanics.ur),
+      });
+    } catch {
+      setGhostErr("couldn't parse that replay");
+    }
+  }
 
   function take(files: FileList | File[]) {
     const replays: File[] = [];
@@ -283,6 +375,8 @@ export default function AnalyzePage() {
     setAiReview(null);
     setPp(null);
     setSaved(null);
+    setGhost(null);
+    setGhostErr(null);
     const total = osrs.length;
     let savedOk = 0;
     let last: ParsedSummary | null = null;
@@ -330,6 +424,7 @@ export default function AnalyzePage() {
           n50: parsed.replay.counts.meh,
           misses: parsed.replay.counts.miss,
           combo: parsed.replay.maxCombo,
+          strainSections: parsed.mechanics.sections.length || undefined,
         }),
       })
         .then((r) => (r.ok ? r.json() : null))
@@ -492,10 +587,58 @@ export default function AnalyzePage() {
 
           {summary.viewer.frames.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
-              <SectionTitle>watch it back</SectionTitle>
-              <div className="mt-4">
-                <ReplayViewer viewer={summary.viewer} hitErrors={summary.mechanics.hitErrors} />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <SectionTitle>watch it back</SectionTitle>
+                <div className="flex items-center gap-2 text-xs">
+                  {ghost ? (
+                    <>
+                      <span className="text-[#8be04a]">
+                        ghost: {ghost.player} · {ghost.acc}% · UR {ghost.ur}
+                      </span>
+                      <button
+                        onClick={() => setGhost(null)}
+                        className="rounded px-1.5 py-0.5 text-white/40 transition hover:bg-black/30 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  ) : (
+                    <label className="cursor-pointer rounded-md bg-black/20 px-2.5 py-1 text-white/60 transition hover:bg-black/40 hover:text-white">
+                      + ghost .osr (same map)
+                      <input
+                        type="file"
+                        accept=".osr"
+                        className="hidden"
+                        suppressHydrationWarning
+                        onChange={(e) => loadGhost(e, summary)}
+                      />
+                    </label>
+                  )}
+                  {ghostErr && <span className="text-red-400">{ghostErr}</span>}
+                </div>
               </div>
+              <div className="mt-4">
+                <ReplayViewer
+                  ref={viewerRef}
+                  viewer={summary.viewer}
+                  hitErrors={summary.mechanics.hitErrors}
+                  ghostFrames={ghost?.frames}
+                />
+              </div>
+              {summary.mechanics.missTimes.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-white/35">jump to:</span>
+                  {summary.mechanics.missTimes.slice(0, 16).map((t, i) => (
+                    <button
+                      key={i}
+                      onClick={() => viewerRef.current?.seekTo(Math.max(0, t - 2000))}
+                      className="rounded bg-red-400/15 px-2 py-1 text-[11px] font-semibold text-red-300 transition hover:bg-red-400/30"
+                    >
+                      miss @ {formatDuration(t / 1000)}
+                    </button>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
@@ -622,24 +765,7 @@ export default function AnalyzePage() {
           {summary.mechanics.sections.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
               <SectionTitle>start to finish</SectionTitle>
-              <div className="mt-4 flex h-24 items-end gap-1">
-                {summary.mechanics.sections.map((s, i) => {
-                  const max = Math.max(...summary.mechanics.sections.map((x) => x.ur), 1);
-                  return (
-                    <div
-                      key={i}
-                      className={`flex-1 rounded-t ${s.misses > 0 ? "bg-red-400" : "bg-pink"}`}
-                      style={{ height: `${Math.max((s.ur / max) * 100, 3)}%` }}
-                      title={`${Math.round(s.fromMs / 1000)}s · UR ${s.ur.toFixed(0)}${s.misses ? ` · ${s.misses} miss` : ""}`}
-                    />
-                  );
-                })}
-              </div>
-              <div className="mt-1 flex justify-between text-[11px] text-white/35">
-                <span>start</span>
-                <span>UR per section · red = misses</span>
-                <span>end</span>
-              </div>
+              <SectionsChart sections={summary.mechanics.sections} strains={pp?.strains} />
             </section>
           )}
 

@@ -67,6 +67,36 @@ export function aimLean(osuText: string, mods: string | number): number | null {
   }
 }
 
+// peak combined strain per bucket, normalized 0-100; index-proportional so
+// bucket i lines up with the replay analysis' section i regardless of clock rate
+export function strainBuckets(
+  osuText: string,
+  mods: string | number,
+  buckets: number,
+): number[] | null {
+  const map = new rosu.Beatmap(osuText);
+  try {
+    if (map.mode !== rosu.GameMode.Osu) return null;
+    const s = new rosu.Difficulty({ mods }).strains(map);
+    const aim = Array.from((s as { aim?: Float64Array }).aim ?? []);
+    const speed = Array.from((s as { speed?: Float64Array }).speed ?? []);
+    (s as unknown as { free?: () => void }).free?.();
+    const n = Math.max(aim.length, speed.length);
+    if (n < buckets) return null;
+    const out = new Array<number>(buckets).fill(0);
+    for (let i = 0; i < n; i++) {
+      const b = Math.min(buckets - 1, Math.floor((i / n) * buckets));
+      out[b] = Math.max(out[b], (aim[i] ?? 0) + (speed[i] ?? 0));
+    }
+    const max = Math.max(...out, 1e-9);
+    return out.map((v) => Math.round((v / max) * 100));
+  } catch {
+    return null;
+  } finally {
+    map.free();
+  }
+}
+
 function accFromCounts(i: PpInput): number | undefined {
   if (i.n300 == null) return undefined;
   const n300 = i.n300 ?? 0;
