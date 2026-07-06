@@ -80,7 +80,7 @@ export type JudgeOutput = {
 
 // full-play judgement: circles + slider follow-circle + spinner rotations.
 // UR / hit errors come from the tap engine (circles + slider heads).
-export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): JudgeOutput {
+export function judgePlay(beatmap: StandardBeatmap, frames: Frame[], rate = 1): JudgeOutput {
   const od = beatmap.difficulty.overallDifficulty;
   const cs = beatmap.difficulty.circleSize;
   const radius = circleRadius(cs);
@@ -163,7 +163,7 @@ export function judgePlay(beatmap: StandardBeatmap, frames: Frame[]): JudgeOutpu
   });
 
   const sections = computeSections(results);
-  const patterns = computePatterns(taps, results, radius);
+  const patterns = computePatterns(taps, results, radius, rate);
   const aim = computeAim(taps, results, radius);
   missTimes.sort((a, b) => a - b);
 

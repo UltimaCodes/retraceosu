@@ -103,10 +103,10 @@ export function analyzeFromDecoded(
     return { time: lf.startTime, x: lf.position.x, y: lf.position.y, keys: lf.buttonState };
   });
 
-  const { mechanics, objectJudgements } = judgePlay(standard, frames);
   const rate = clockRate(modsFromBitmask(Number(score.info.rawMods)));
+  const { mechanics, objectJudgements } = judgePlay(standard, frames, rate);
   const viewer = buildViewer(standard, frames, rate, objectJudgements);
-  mechanics.keys = computeKeyStats(frames) ?? undefined;
+  mechanics.keys = computeKeyStats(frames, rate) ?? undefined;
   mechanics.cursor = computeCursorStats(viewer.objects, viewer.frames, viewer.radius) ?? undefined;
   return { mechanics, viewer };
 }

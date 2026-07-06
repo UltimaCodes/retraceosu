@@ -70,6 +70,7 @@ export const ReplayViewer = forwardRef<
   const rangeRef = useRef<HTMLInputElement>(null);
   const tRef = useRef(0);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const length = viewer.lengthMs || 1;
 
   const draw = useCallback(
@@ -248,7 +249,7 @@ export const ReplayViewer = forwardRef<
     if (!playing) return;
     let last = performance.now();
     let raf = 0;
-    const rate = viewer.rate || 1;
+    const rate = (viewer.rate || 1) * speed;
     const step = (ts: number) => {
       const nt = tRef.current + (ts - last) * rate;
       last = ts;
@@ -262,7 +263,36 @@ export const ReplayViewer = forwardRef<
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [playing, length, viewer.rate, present]);
+  }, [playing, length, viewer.rate, speed, present]);
+
+  // jump to the adjacent recorded frame, like , and . in a video editor
+  const stepFrame = useCallback(
+    (dir: 1 | -1) => {
+      const frames = viewer.frames;
+      if (!frames.length) return;
+      const cur = tRef.current;
+      const idx =
+        dir > 0
+          ? Math.min(frames.length - 1, lowerBound(frames, cur + 1))
+          : Math.max(0, lowerBound(frames, cur) - 1);
+      setPlaying(false);
+      seek(frames[idx].t);
+    },
+    [viewer.frames, seek],
+  );
+
+  const togglePlay = useCallback(() => {
+    if (tRef.current >= length) seek(0);
+    setPlaying((p) => !p);
+  }, [length, seek]);
+
+  const nudge = useCallback(
+    (ms: number) => {
+      setPlaying(false);
+      seek(tRef.current + ms);
+    },
+    [seek],
+  );
 
   const maxAbs = useMemo(
     () => Math.max(40, ...hitErrors.map((e) => Math.abs(e.error))),
@@ -287,25 +317,74 @@ export const ReplayViewer = forwardRef<
   );
 
   return (
-    <div>
+    <div
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if ((e.target as HTMLElement).tagName === "INPUT") return;
+        if (e.key === " ") {
+          e.preventDefault();
+          togglePlay();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          nudge(e.shiftKey ? -5000 : -1000);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          nudge(e.shiftKey ? 5000 : 1000);
+        } else if (e.key === ",") {
+          stepFrame(-1);
+        } else if (e.key === ".") {
+          stepFrame(1);
+        }
+      }}
+      className="rounded-lg outline-none focus-visible:ring-1 focus-visible:ring-pink/40"
+    >
       <canvas
         ref={canvasRef}
         width={RES_W}
         height={RES_H}
-        className="block w-full max-w-full rounded-lg bg-black/40"
+        onClick={togglePlay}
+        className="block w-full max-w-full cursor-pointer rounded-lg bg-black/40"
         style={{ aspectRatio: "4 / 3" }}
       />
 
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          onClick={() => {
-            if (tRef.current >= length) seek(0);
-            setPlaying((p) => !p);
-          }}
-          className="w-9 rounded-md bg-pink py-1.5 text-sm font-semibold text-white hover:bg-pink-dark"
-        >
-          {playing ? "❚❚" : "▶"}
-        </button>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => nudge(-5000)}
+            title="back 5s (shift+←)"
+            className="rounded-md bg-black/25 px-2 py-1.5 text-xs font-semibold text-white/60 hover:bg-black/40 hover:text-white"
+          >
+            -5s
+          </button>
+          <button
+            onClick={() => stepFrame(-1)}
+            title="previous frame (,)"
+            className="rounded-md bg-black/25 px-2 py-1.5 text-xs font-semibold text-white/60 hover:bg-black/40 hover:text-white"
+          >
+            ⏴▏
+          </button>
+          <button
+            onClick={togglePlay}
+            title="play/pause (space)"
+            className="w-9 rounded-md bg-pink py-1.5 text-sm font-semibold text-white hover:bg-pink-dark"
+          >
+            {playing ? "❚❚" : "▶"}
+          </button>
+          <button
+            onClick={() => stepFrame(1)}
+            title="next frame (.)"
+            className="rounded-md bg-black/25 px-2 py-1.5 text-xs font-semibold text-white/60 hover:bg-black/40 hover:text-white"
+          >
+            ▕⏵
+          </button>
+          <button
+            onClick={() => nudge(5000)}
+            title="forward 5s (shift+→)"
+            className="rounded-md bg-black/25 px-2 py-1.5 text-xs font-semibold text-white/60 hover:bg-black/40 hover:text-white"
+          >
+            +5s
+          </button>
+        </div>
         <input
           ref={rangeRef}
           type="range"
@@ -317,10 +396,27 @@ export const ReplayViewer = forwardRef<
             setPlaying(false);
             seek(Number((e.target as HTMLInputElement).value));
           }}
-          className="h-1 flex-1 cursor-pointer accent-pink"
+          className="h-1 min-w-[120px] flex-1 cursor-pointer accent-pink"
         />
+        <div className="flex items-center gap-1">
+          {[0.25, 0.5, 1, 2].map((s) => (
+            <button
+              key={s}
+              onClick={() => setSpeed(s)}
+              title={`playback speed ${s}x${viewer.rate !== 1 ? ` (of the replay's ${viewer.rate}x)` : ""}`}
+              className={`rounded px-1.5 py-1 text-[11px] font-bold transition ${
+                speed === s ? "bg-pink text-white" : "bg-black/25 text-white/50 hover:text-white"
+              }`}
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
         {viewer.rate !== 1 && (
-          <span className="shrink-0 rounded bg-pink/15 px-1.5 py-0.5 text-[11px] font-semibold text-pink">
+          <span
+            className="shrink-0 rounded bg-pink/15 px-1.5 py-0.5 text-[11px] font-semibold text-pink"
+            title="the mod clock rate; playback speed multiplies this"
+          >
             {viewer.rate}×
           </span>
         )}
@@ -347,7 +443,8 @@ export const ReplayViewer = forwardRef<
         <div ref={playheadRef} className="absolute top-0 h-full w-0.5 bg-white" style={{ left: 0 }} />
       </div>
       <p className="mt-1 text-[11px] text-white/35">
-        Cursor trace · × = miss, ○ = 100/50 · click the timeline to jump there.
+        × = miss, ○ = 100/50 · space = play, ←/→ = seek (shift = 5s), , and . = frame step ·
+        click the timeline to jump.
         {ghostFrames?.length ? " Green cursor is the ghost replay." : ""}
       </p>
     </div>

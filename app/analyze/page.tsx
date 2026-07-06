@@ -96,14 +96,22 @@ function FilePill({
 }
 
 // compact measured facts for the optional AI coach
-function coachFacts(s: ParsedSummary) {
+function coachFacts(
+  s: ParsedSummary,
+  pp: { pp: number; ppFc: number; stars: number } | null,
+) {
   const m = s.mechanics;
   const b = s.beatmap;
+  const rate = s.viewer.rate || 1;
   return {
     map: `${b.artist} - ${b.title} [${b.version}]`,
     mods: s.replay.mods,
-    mapDifficulty: { cs: +b.cs.toFixed(1), ar: +b.ar.toFixed(1), od: +b.od.toFixed(1) },
-    lengthSec: Math.round(b.lengthMs / 1000),
+    clockRate: rate, // DT/NC 1.5, HT 0.75; every value below is already mod-adjusted
+    starRatingModAdjusted: pp ? +pp.stars.toFixed(2) : undefined,
+    ppEarned: pp ? Math.round(pp.pp) : undefined,
+    ppIfFc: pp ? Math.round(pp.ppFc) : undefined,
+    mapDifficultyModAdjusted: { cs: +b.cs.toFixed(1), ar: +b.ar.toFixed(1), od: +b.od.toFixed(1) },
+    lengthSecRealTime: Math.round(b.lengthMs / rate / 1000),
     accuracy: +s.replay.accuracy.toFixed(2),
     counts: { c300: m.count300, c100: m.count100, c50: m.count50, miss: m.countMiss },
     ur: Math.round(m.ur),
@@ -403,17 +411,8 @@ export default function AnalyzePage() {
       setSummary(last);
       setSaved({ ok: savedOk, total });
       const parsed = last;
-      // optional AI review; deterministic coaching already covers the fallback
-      fetch("/api/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(coachFacts(parsed)),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j) => j?.review && setAiReview(j.review))
-        .catch(() => {});
-      // exact pp from the replay's stored counts
-      fetch("/api/pp", {
+      // exact pp first (fast, local rosu), then the coach with modded stars in hand
+      const ppPromise = fetch("/api/pp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -428,8 +427,19 @@ export default function AnalyzePage() {
         }),
       })
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => j?.pp != null && setPp(j))
-        .catch(() => {});
+        .catch(() => null);
+      ppPromise.then((j) => j?.pp != null && setPp(j));
+      // optional AI review; deterministic coaching already covers the fallback
+      ppPromise.then((ppRes) =>
+        fetch("/api/coach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(coachFacts(parsed, ppRes?.pp != null ? ppRes : null)),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => j?.review && setAiReview(j.review))
+          .catch(() => {}),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

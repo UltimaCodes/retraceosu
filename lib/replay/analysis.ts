@@ -85,6 +85,7 @@ export function computePatterns(
   taps: TapObject[],
   results: ObjectResult[],
   radius: number,
+  rate = 1,
 ): PatternStat[] {
   const diameter = radius * 2;
   const groups: Record<string, number[]> = {
@@ -98,7 +99,8 @@ export function computePatterns(
     if (err == null) continue; // only landed hits carry timing
     const gap = taps[i].time - taps[i - 1].time;
     const spacing = Math.hypot(taps[i].x - taps[i - 1].x, taps[i].y - taps[i - 1].y) / diameter;
-    const fast = gap <= 130;
+    // real-time gap: DT compresses map-time gaps by 1.5, HT stretches them
+    const fast = gap / rate <= 130;
     let name: keyof typeof groups;
     if (spacing >= 2.4) name = "Jumps";
     else if (fast && spacing < 1.3) name = "Streams";

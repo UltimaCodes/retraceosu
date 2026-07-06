@@ -28,7 +28,8 @@ const median = (v: number[]) => {
   return s.length ? s[Math.floor(s.length / 2)] : 0;
 };
 
-export function computeKeyStats(frames: Frame[]): KeyStats | null {
+// rate converts map-time to real time so DT hands read as the player felt them
+export function computeKeyStats(frames: Frame[], rate = 1): KeyStats | null {
   const sorted = [...frames].filter((f) => f.time >= 0).sort((a, b) => a.time - b.time);
   const presses: { t: number; key: 1 | 2 }[] = [];
   const holds: number[] = [];
@@ -38,19 +39,20 @@ export function computeKeyStats(frames: Frame[]): KeyStats | null {
   let rightDown = 0;
 
   for (const f of sorted) {
+    const t = f.time / rate; // physical milliseconds
     // K1 also raises M1 in stable replays, so each side is key-or-mouse
     const left = (f.keys & (K1 | M1)) !== 0;
     const right = (f.keys & (K2 | M2)) !== 0;
     if (left && !prevLeft) {
-      presses.push({ t: f.time, key: 1 });
-      leftDown = f.time;
+      presses.push({ t, key: 1 });
+      leftDown = t;
     }
-    if (!left && prevLeft) holds.push(f.time - leftDown);
+    if (!left && prevLeft) holds.push(t - leftDown);
     if (right && !prevRight) {
-      presses.push({ t: f.time, key: 2 });
-      rightDown = f.time;
+      presses.push({ t, key: 2 });
+      rightDown = t;
     }
-    if (!right && prevRight) holds.push(f.time - rightDown);
+    if (!right && prevRight) holds.push(t - rightDown);
     prevLeft = left;
     prevRight = right;
   }
@@ -84,7 +86,7 @@ export function computeKeyStats(frames: Frame[]): KeyStats | null {
     }
   }
 
-  const sane = holds.filter((h) => h >= 15 && h <= 300);
+  const sane = holds.filter((h) => h >= 8 && h <= 300);
   return {
     k1,
     k2,
