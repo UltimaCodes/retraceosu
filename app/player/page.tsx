@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Nav } from "@/app/components/Nav";
 import { ScrollBox } from "@/app/components/ScrollBox";
+import { ReportSkeleton } from "@/app/components/Skeleton";
 import { formatNumber, formatPlaytime, formatJoinDate, formatDuration, flagEmoji } from "@/lib/format";
 import type { PlayerReport, PlayHighlight } from "@/lib/informatics/player";
 
@@ -133,9 +134,7 @@ export default function PlayerPage() {
         </div>
 
         {state.status === "loading" && (
-          <p className="mt-6 text-sm text-white/40">
-            Pulling their top 100 and mod-adjusted star ratings, takes a few seconds…
-          </p>
+          <ReportSkeleton note="Pulling their top 100 and mod-adjusted star ratings, takes a few seconds…" />
         )}
         {state.status === "notfound" && (
           <p className="mt-6 text-sm text-white/50">No osu!standard player by that name.</p>

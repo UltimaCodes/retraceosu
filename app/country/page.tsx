@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Nav } from "@/app/components/Nav";
 import { ScrollBox } from "@/app/components/ScrollBox";
+import { ReportSkeleton } from "@/app/components/Skeleton";
 import { formatNumber, formatPlaytime, flagEmoji } from "@/lib/format";
 import type { CountryReport, CountryPlayer, CountryPlay } from "@/lib/informatics/country";
 
@@ -138,9 +139,7 @@ export default function CountryPage() {
           <p className="mt-6 text-sm text-red-400">Couldn&apos;t load that country, try again in a minute.</p>
         )}
         {state.status === "loading" && (
-          <p className="mt-6 text-sm text-white/40">
-            Deep-scanning the top 50, first load takes a little while…
-          </p>
+          <ReportSkeleton note="Deep-scanning the top 50, first load takes a little while…" />
         )}
         {state.status === "ready" && <Report data={state.data} />}
       </main>

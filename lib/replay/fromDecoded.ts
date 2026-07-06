@@ -8,6 +8,7 @@ import {
 } from "osu-standard-stable";
 import { judgePlay, stackedPos } from "./judge";
 import { clockRate, modsFromBitmask } from "./mods";
+import { computeCursorStats, computeKeyStats } from "./style";
 import { circleRadius, type Frame, type Judgement, type Mechanics } from "./reconstruct";
 import type { ViewerData, ViewerObject } from "./types";
 
@@ -104,8 +105,8 @@ export function analyzeFromDecoded(
 
   const { mechanics, objectJudgements } = judgePlay(standard, frames);
   const rate = clockRate(modsFromBitmask(Number(score.info.rawMods)));
-  return {
-    mechanics,
-    viewer: buildViewer(standard, frames, rate, objectJudgements),
-  };
+  const viewer = buildViewer(standard, frames, rate, objectJudgements);
+  mechanics.keys = computeKeyStats(frames) ?? undefined;
+  mechanics.cursor = computeCursorStats(viewer.objects, viewer.frames, viewer.radius) ?? undefined;
+  return { mechanics, viewer };
 }

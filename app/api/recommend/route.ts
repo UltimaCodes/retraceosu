@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
+import { getSession } from "@/lib/osu/session";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { deriveFarmProfile, pickCandidates, type SearchSet } from "@/lib/recommend";
 import { aimLean, calcPp, fetchOsuFile } from "@/lib/server/rosu";
@@ -15,6 +16,7 @@ export type Recommendation = {
   mods: string;
   accUsed: number; // the acc the expected pp assumes
   expectedPp: number;
+  netGain: number; // what your total actually moves after top-100 reweighting
   stars: number;
   bpm: number;
   lengthSec: number;
@@ -33,6 +35,7 @@ export type Choke = {
   misses: number;
   potentialPp: number;
   gain: number;
+  netGain: number;
   reason: "choke" | "acc";
   targetAcc: number;
 };
@@ -42,6 +45,7 @@ const TTL = 10 * 60 * 1000;
 
 // recs beyond your best play * this are FC fantasies, not farm
 const CEILING = 1.2;
+const WEIGHT = 0.95;
 
 const median = (v: number[]) => {
   const s = [...v].sort((a, b) => a - b);
@@ -53,8 +57,29 @@ const leanTag = (l: number): Recommendation["lean"] =>
 
 const missOf = (s: OsuScore) => s.statistics?.count_miss ?? s.statistics?.miss ?? 0;
 
+// osu weights bests at 0.95^i, so a raw 450pp play is worth far less than 450
+const weighted = (pps: number[]) => pps.reduce((s, p, i) => s + p * WEIGHT ** i, 0);
+
+function addGain(pps: number[], curTotal: number, newPp: number): number {
+  const next = [...pps, newPp].sort((a, b) => b - a).slice(0, 100);
+  return Math.max(0, weighted(next) - curTotal);
+}
+
+function replaceGain(pps: number[], curTotal: number, oldPp: number, newPp: number): number {
+  const next = [...pps];
+  const i = next.indexOf(oldPp);
+  if (i >= 0) next.splice(i, 1);
+  next.push(newPp);
+  next.sort((a, b) => b - a);
+  return Math.max(0, weighted(next.slice(0, 100)) - curTotal);
+}
+
 // price the plays you already own but underperformed, only when there's real pp to gain
-async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
+async function computeChokes(
+  best: OsuScore[],
+  pps: number[],
+  curTotal: number,
+): Promise<Choke[]> {
   const cands = best
     .filter((s) => s.pp != null)
     .filter((s) => missOf(s) > 0 || s.accuracy * 100 < 96) // a real choke, or acc actually bad
@@ -88,6 +113,7 @@ async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
           misses: miss,
           potentialPp: Math.round(potentialPp),
           gain: Math.round(gain),
+          netGain: Math.round(replaceGain(pps, curTotal, curPp, potentialPp)),
           reason,
           targetAcc: +targetAcc.toFixed(1),
         } as Choke;
@@ -96,20 +122,27 @@ async function computeChokes(best: OsuScore[]): Promise<Choke[]> {
       }
     })
   ).filter((c): c is Choke => c != null);
-  out.sort((a, b) => b.gain - a.gain);
+  out.sort((a, b) => b.netGain - a.netGain);
   return out.slice(0, 25);
 }
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get("osu_token")?.value;
-  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const session = await getSession(req);
+  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const token = session.token;
   const refresh = req.nextUrl.searchParams.get("refresh") === "1";
+
+  const respond = (body: unknown, init?: { status: number }) => {
+    const res = NextResponse.json(body, init);
+    session.commit?.(res);
+    return res;
+  };
 
   try {
     const me = await osuFetch<OsuMe>(token, "/me/osu");
     if (!refresh) {
       const hit = cache.get(me.id);
-      if (hit && Date.now() - hit.at < TTL) return NextResponse.json(hit.body);
+      if (hit && Date.now() - hit.at < TTL) return respond(hit.body);
     }
 
     const best = await osuFetch<OsuScore[]>(
@@ -118,8 +151,14 @@ export async function GET(req: NextRequest) {
     );
     const profile = deriveFarmProfile(best);
     if (!profile) {
-      return NextResponse.json({ error: "not_enough_plays" }, { status: 422 });
+      return respond({ error: "not_enough_plays" }, { status: 422 });
     }
+
+    const pps = best
+      .map((s) => s.pp)
+      .filter((p): p is number => p != null)
+      .sort((a, b) => b - a);
+    const curTotal = weighted(pps);
 
     // aim/speed lean measured from their strongest plays, under the main combo
     const mainMods = profile.combos[0].mods || 0;
@@ -163,6 +202,7 @@ export async function GET(req: NextRequest) {
                 mods: combo.mods || "NM",
                 accUsed: combo.acc,
                 expectedPp: Math.round(r.pp),
+                netGain: Math.round(addGain(pps, curTotal, r.pp)),
                 stars: +r.stars.toFixed(2),
                 bpm: Math.round(c.bpm * rate),
                 lengthSec: Math.round(c.lengthSec / rate),
@@ -177,14 +217,22 @@ export async function GET(req: NextRequest) {
       })
     ).filter((p): p is { rec: Recommendation; lean: number } => p != null);
 
-    // rank by pp, discounted by distance from the player's own aim/speed lean
+    // rank by what the play is really worth to the profile, nudged toward their lean
     scored.sort((a, b) => {
       const fit = (l: number) =>
         userLean == null ? 1 : 1 - Math.min(0.4, Math.abs(l - userLean) * 2.5);
-      return b.rec.expectedPp * fit(b.lean) - a.rec.expectedPp * fit(a.lean);
+      return b.rec.netGain * fit(b.lean) - a.rec.netGain * fit(a.lean);
     });
 
-    const chokes = await computeChokes(best);
+    const chokes = await computeChokes(best, pps, curTotal);
+
+    // ceiling profile: every listed choke cleaned at once
+    const potential = new Map(chokes.map((c) => [c.beatmapId, c.potentialPp]));
+    const ceilingPps = best
+      .filter((s) => s.pp != null)
+      .map((s) => Math.max(s.pp as number, potential.get(s.beatmap.id) ?? 0))
+      .sort((a, b) => b - a);
+    const chokeCeilingGain = Math.max(0, weighted(ceilingPps) - curTotal);
 
     const body = {
       profile: {
@@ -194,14 +242,19 @@ export async function GET(req: NextRequest) {
         srLo: profile.srLo,
         srHi: profile.srHi,
         lean: userLean == null ? null : leanTag(userLean),
+        totalPp: Math.round(me.statistics.pp),
+        chokeCeiling: {
+          total: Math.round(me.statistics.pp + chokeCeilingGain),
+          gain: Math.round(chokeCeilingGain),
+        },
       },
       recommendations: scored.slice(0, 50).map((s) => s.rec),
       chokes,
     };
     cache.set(me.id, { at: Date.now(), body });
-    return NextResponse.json(body);
+    return respond(body);
   } catch (e) {
     const status = e instanceof OsuApiError && e.status === 401 ? 401 : 502;
-    return NextResponse.json({ error: "fetch_failed" }, { status });
+    return respond({ error: "fetch_failed" }, { status });
   }
 }

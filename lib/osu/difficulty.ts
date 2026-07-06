@@ -25,6 +25,16 @@ export async function fetchAttributes(
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
+  // disk L2 (server-only, hence the dynamic import): ranked attrs don't change
+  try {
+    const { diskGet } = await import("../server/diskCache");
+    const hit = await diskGet<OsuDifficultyAttributes>("attrs", key, 7 * 24 * 3600 * 1000);
+    if (hit) {
+      cache.set(key, hit);
+      return hit;
+    }
+  } catch {}
+
   try {
     const res = await fetch(`${API_BASE}/beatmaps/${beatmapId}/attributes`, {
       method: "POST",
@@ -43,6 +53,11 @@ export async function fetchAttributes(
     const json = await res.json();
     const attr = (json?.attributes ?? null) as OsuDifficultyAttributes | null;
     cache.set(key, attr);
+    if (attr) {
+      import("../server/diskCache")
+        .then(({ diskSet }) => diskSet("attrs", key, attr))
+        .catch(() => {});
+    }
     return attr;
   } catch {
     cache.set(key, null);

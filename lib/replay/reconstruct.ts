@@ -45,6 +45,8 @@ export type Mechanics = {
   aim: AimStats;
   sliderBreaks: number;
   missTimes: number[]; // ms into the map, for concrete callouts
+  keys?: import("./style").KeyStats;
+  cursor?: import("./style").CursorStats;
 };
 
 export type ReconstructOptions = { od: number; cs: number };

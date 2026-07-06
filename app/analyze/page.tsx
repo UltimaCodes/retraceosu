@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Nav } from "@/app/components/Nav";
 import { parseReplay } from "@/lib/replay/parseClient";
 import { recordFrom, saveReplay } from "@/lib/history";
-import type { ParsedSummary } from "@/lib/replay/types";
+import type { ParsedSummary, ViewerObject } from "@/lib/replay/types";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { HitErrorChart } from "@/app/components/HitErrorChart";
 import { ReplayViewer } from "@/app/components/ReplayViewer";
@@ -116,6 +116,23 @@ function coachFacts(s: ParsedSummary) {
     missTimestampsSec: m.missTimes.slice(0, 8).map((t) => Math.round(t / 1000)),
     patterns: m.patterns.map((p) => ({ name: p.name, ur: Math.round(p.ur), notes: p.count })),
     sectionUr: m.sections.map((x) => Math.round(x.ur)),
+    keys: m.keys
+      ? {
+          tapStyle: m.keys.style,
+          k1Pct: m.keys.k1Pct,
+          altRate: m.keys.altRate,
+          startsAlternatingAtBpm: m.keys.altBpm,
+          keyHoldMsMedian: m.keys.holdMsMedian,
+        }
+      : undefined,
+    cursor: m.cursor
+      ? {
+          aimStyle: m.cursor.style,
+          pathVsDirectRatio: m.cursor.straightness,
+          missesLeftHalf: m.cursor.missLeft,
+          missesRightHalf: m.cursor.missRight,
+        }
+      : undefined,
     // what the deterministic panel already told them; the model should build past this
     alreadyFlagged: {
       strengths: m.coaching.strengths,
@@ -123,6 +140,114 @@ function coachFacts(s: ParsedSummary) {
       practice: m.coaching.practice,
     },
   };
+}
+
+// misses and 100s on the playfield, so side bias is visible at a glance
+function MissMap({ objects }: { objects: ViewerObject[] }) {
+  const misses = objects.filter((o) => o.j === 3);
+  const oks = objects.filter((o) => o.j === 1 || o.j === 2);
+  if (misses.length + oks.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <svg viewBox="-8 -8 528 400" className="w-full max-w-md rounded-lg bg-black/30">
+        <rect x="0" y="0" width="512" height="384" fill="none" stroke="rgba(255,255,255,0.08)" />
+        <line x1="256" y1="0" x2="256" y2="384" stroke="rgba(255,255,255,0.05)" />
+        {oks.map((o, i) => (
+          <circle key={`o${i}`} cx={o.x} cy={o.y} r="5" fill="rgba(251,191,36,0.35)" />
+        ))}
+        {misses.map((o, i) => (
+          <circle key={`m${i}`} cx={o.x} cy={o.y} r="7" fill="rgba(248,113,113,0.85)" />
+        ))}
+      </svg>
+      <p className="mt-2 text-[11px] text-white/35">
+        where it went wrong on the playfield · red = miss, amber = 100/50
+      </p>
+    </div>
+  );
+}
+
+// wrap-aware canvas text
+function wrapText(g: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number) {
+  const words = text.split(" ");
+  let line = "";
+  for (const w of words) {
+    if (g.measureText(line + w).width > maxW && line) {
+      g.fillText(line.trimEnd(), x, y);
+      y += lh;
+      line = "";
+    }
+    line += w + " ";
+  }
+  g.fillText(line.trimEnd(), x, y);
+  return y;
+}
+
+function downloadCard(s: ParsedSummary, pp: { pp: number; stars: number } | null) {
+  const m = s.mechanics;
+  const c = document.createElement("canvas");
+  c.width = 900;
+  c.height = 480;
+  const g = c.getContext("2d");
+  if (!g) return;
+
+  g.fillStyle = "#231b20";
+  g.fillRect(0, 0, 900, 480);
+  g.strokeStyle = "rgba(255,102,171,0.4)";
+  g.lineWidth = 2;
+  g.strokeRect(1, 1, 898, 478);
+
+  g.fillStyle = "#ffffff";
+  g.font = "bold 26px system-ui, sans-serif";
+  g.fillText("re", 40, 58);
+  g.fillStyle = "#ff66ab";
+  g.fillText("trace", 40 + g.measureText("re").width, 58);
+  g.fillStyle = "rgba(255,255,255,0.4)";
+  g.font = "14px system-ui, sans-serif";
+  g.fillText("replay autopsy", 40, 80);
+
+  g.fillStyle = "#ffffff";
+  g.font = "bold 30px system-ui, sans-serif";
+  wrapText(g, `${s.beatmap.artist} – ${s.beatmap.title}`, 40, 140, 820, 38);
+  g.fillStyle = "#ff66ab";
+  g.font = "600 18px system-ui, sans-serif";
+  const mods = ["None", "NM", ""].includes(s.replay.mods) ? "nomod" : `+${s.replay.mods}`;
+  g.fillText(`[${s.beatmap.version}] · ${mods} · ${s.replay.player}`, 40, 172);
+
+  const stats: [string, string][] = [
+    ["ACCURACY", `${s.replay.accuracy.toFixed(2)}%`],
+    ["UR", m.ur.toFixed(0)],
+    ["300/100/50/X", `${m.count300}/${m.count100}/${m.count50}/${m.countMiss}`],
+    ["PP", pp ? `${Math.round(pp.pp)} (${pp.stars.toFixed(2)}★)` : "n/a"],
+  ];
+  stats.forEach(([label, value], i) => {
+    const x = 40 + i * 210;
+    g.fillStyle = "rgba(0,0,0,0.25)";
+    g.fillRect(x, 210, 190, 80);
+    g.fillStyle = "rgba(255,255,255,0.4)";
+    g.font = "11px system-ui, sans-serif";
+    g.fillText(label, x + 14, 234);
+    g.fillStyle = "#ffffff";
+    g.font = "bold 24px system-ui, sans-serif";
+    g.fillText(value, x + 14, 268);
+  });
+
+  const verdict =
+    m.coaching.weaknesses[0] ?? m.insights[0] ?? "Clean run, nothing to flag.";
+  g.fillStyle = "rgba(255,255,255,0.45)";
+  g.font = "11px system-ui, sans-serif";
+  g.fillText("THE VERDICT", 40, 330);
+  g.fillStyle = "rgba(255,255,255,0.85)";
+  g.font = "18px system-ui, sans-serif";
+  wrapText(g, verdict, 40, 356, 820, 26);
+
+  g.fillStyle = "rgba(255,255,255,0.3)";
+  g.font = "13px system-ui, sans-serif";
+  g.fillText("analyzed in the browser · retrace", 40, 448);
+
+  const a = document.createElement("a");
+  a.download = `retrace-${s.beatmap.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`;
+  a.href = c.toDataURL("image/png");
+  a.click();
 }
 
 export default function AnalyzePage() {
@@ -300,6 +425,14 @@ export default function AnalyzePage() {
               </Link>
             </span>
           )}
+          {summary && !busy && (
+            <button
+              onClick={() => downloadCard(summary, pp)}
+              className="rounded-lg border border-line bg-black/20 px-3 py-2 text-sm text-white/70 transition hover:border-pink/40 hover:text-white"
+            >
+              Share card ↓
+            </button>
+          )}
         </div>
 
         {summary && (
@@ -414,6 +547,80 @@ export default function AnalyzePage() {
               reconstructed totals track the replay closely.
             </p>
           </section>
+
+          {(summary.mechanics.keys || summary.mechanics.cursor) && (
+            <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">
+              <SectionTitle>hands and aim style</SectionTitle>
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {summary.mechanics.keys && (
+                  <>
+                    <Big label="Tap style" value={summary.mechanics.keys.style} accent />
+                    <Big
+                      label="K1 / K2 split"
+                      value={`${summary.mechanics.keys.k1Pct}/${100 - summary.mechanics.keys.k1Pct}`}
+                    />
+                    <Big label="Key hold" value={`${summary.mechanics.keys.holdMsMedian}ms`} />
+                  </>
+                )}
+                {summary.mechanics.cursor && (
+                  <Big label="Aim style" value={summary.mechanics.cursor.style} accent />
+                )}
+              </div>
+              <ul className="mt-4 space-y-1.5 text-sm text-white/75">
+                {summary.mechanics.keys?.altBpm != null && (
+                  <li className="flex gap-2">
+                    <span className="text-pink">›</span>
+                    <span>
+                      You single-tap until roughly {summary.mechanics.keys.altBpm}bpm streams,
+                      then switch to alternating.
+                    </span>
+                  </li>
+                )}
+                {summary.mechanics.keys && (
+                  <li className="flex gap-2">
+                    <span className="text-pink">›</span>
+                    <span>
+                      {Math.round(summary.mechanics.keys.altRate * 100)}% of your fast presses
+                      alternate keys ({summary.mechanics.keys.k1} left, {summary.mechanics.keys.k2}{" "}
+                      right).
+                    </span>
+                  </li>
+                )}
+                {summary.mechanics.cursor && (
+                  <li className="flex gap-2">
+                    <span className="text-pink">›</span>
+                    <span>
+                      Your cursor travels {summary.mechanics.cursor.straightness}x the straight
+                      line into jumps
+                      {summary.mechanics.cursor.style === "snap"
+                        ? ", textbook snap aim."
+                        : summary.mechanics.cursor.style === "flow"
+                          ? ", you carry momentum through patterns (flow aim)."
+                          : ", somewhere between snap and flow."}
+                    </span>
+                  </li>
+                )}
+                {summary.mechanics.cursor &&
+                  summary.mechanics.cursor.missLeft + summary.mechanics.cursor.missRight >= 4 &&
+                  Math.max(summary.mechanics.cursor.missLeft, summary.mechanics.cursor.missRight) >=
+                    (summary.mechanics.cursor.missLeft + summary.mechanics.cursor.missRight) *
+                      0.7 && (
+                    <li className="flex gap-2">
+                      <span className="text-pink">›</span>
+                      <span>
+                        Most of your misses land on the{" "}
+                        {summary.mechanics.cursor.missLeft > summary.mechanics.cursor.missRight
+                          ? "left"
+                          : "right"}{" "}
+                        half of the playfield ({summary.mechanics.cursor.missLeft} left /{" "}
+                        {summary.mechanics.cursor.missRight} right).
+                      </span>
+                    </li>
+                  )}
+              </ul>
+              <MissMap objects={summary.viewer.objects} />
+            </section>
+          )}
 
           {summary.mechanics.sections.length > 0 && (
             <section className="mt-4 rounded-xl border border-line bg-surface p-4 sm:p-6">

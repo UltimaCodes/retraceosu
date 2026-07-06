@@ -51,3 +51,23 @@ export async function exchangeCode(code: string): Promise<TokenResponse> {
   }
   return res.json();
 }
+
+export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+  const { clientId, clientSecret } = osuEnv();
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      scope: SCOPES,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Token refresh failed: ${res.status}`);
+  }
+  return res.json();
+}

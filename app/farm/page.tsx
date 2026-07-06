@@ -13,6 +13,7 @@ type Rec = {
   mods: string;
   accUsed: number;
   expectedPp: number;
+  netGain: number;
   stars: number;
   bpm: number;
   lengthSec: number;
@@ -30,6 +31,7 @@ type Choke = {
   misses: number;
   potentialPp: number;
   gain: number;
+  netGain: number;
   reason: "choke" | "acc";
   targetAcc: number;
 };
@@ -42,6 +44,8 @@ type FarmData = {
     srLo: number;
     srHi: number;
     lean: "aim" | "speed" | "balanced" | null;
+    totalPp: number;
+    chokeCeiling: { total: number; gain: number };
   };
   recommendations: Rec[];
   chokes: Choke[];
@@ -154,6 +158,15 @@ export default function FarmPage() {
                   {state.data.profile.lean} player
                 </span>
               )}
+              {state.data.profile.chokeCeiling.gain > 0 && (
+                <span
+                  className="rounded-full bg-[#8be04a]/10 px-3 py-1 text-[#8be04a]"
+                  title="your total pp if every listed choke got cleaned"
+                >
+                  ceiling {state.data.profile.chokeCeiling.total}pp (+
+                  {state.data.profile.chokeCeiling.gain})
+                </span>
+              )}
             </div>
 
             <div className="mt-5 inline-flex rounded-lg border border-line bg-black/20 p-1 text-sm">
@@ -178,7 +191,6 @@ export default function FarmPage() {
             {tab === "recs" ? (
               <RecsBox
                 recs={state.data.recommendations}
-                floor={state.data.profile.floor}
                 limit={limit}
                 onMore={() => setLimit((l) => l + PAGE)}
               />
@@ -200,12 +212,10 @@ export default function FarmPage() {
 
 function RecsBox({
   recs,
-  floor,
   limit,
   onMore,
 }: {
   recs: Rec[];
-  floor: number;
   limit: number;
   onMore: () => void;
 }) {
@@ -248,7 +258,7 @@ function RecsBox({
             </div>
             <div className="shrink-0 text-right">
               <div className="font-display text-xl font-bold text-pink">~{r.expectedPp}pp</div>
-              <div className="text-[11px] text-white/40">+{r.expectedPp - floor} over floor</div>
+              <div className="text-[11px] text-[#8be04a]">+{r.netGain} to your total</div>
             </div>
           </a>
         ))}
@@ -303,7 +313,7 @@ function ChokesBox({ chokes }: { chokes: Choke[] }) {
           </div>
           <div className="shrink-0 text-right">
             <div className="font-display text-xl font-bold text-pink">~{c.potentialPp}pp</div>
-            <div className="text-[11px] text-[#8be04a]">+{c.gain} if you clean it</div>
+            <div className="text-[11px] text-[#8be04a]">+{c.netGain} to your total</div>
           </div>
         </a>
       ))}

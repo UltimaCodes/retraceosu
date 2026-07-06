@@ -5,6 +5,7 @@ const LINKS = [
   { href: "/history", label: "History" },
   { href: "/farm", label: "Farm" },
   { href: "/player", label: "Players" },
+  { href: "/compare", label: "Compare" },
   { href: "/country", label: "Countries" },
 ];
 

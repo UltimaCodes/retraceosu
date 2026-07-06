@@ -1,4 +1,5 @@
 import * as rosu from "rosu-pp-js";
+import { diskGet, diskSet } from "./diskCache";
 
 export type PpInput = {
   mods: string | number;
@@ -84,10 +85,15 @@ const CACHE_MAX = 200;
 export async function fetchOsuFile(beatmapId: number): Promise<string | null> {
   const hit = osuCache.get(beatmapId);
   if (hit) return hit;
-  const res = await fetch(`https://osu.ppy.sh/osu/${beatmapId}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  const text = await res.text();
-  if (!text.startsWith("osu file format")) return null;
+  const key = String(beatmapId);
+  let text = await diskGet<string>("osu", key, 7 * 24 * 3600 * 1000);
+  if (!text) {
+    const res = await fetch(`https://osu.ppy.sh/osu/${beatmapId}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    text = await res.text();
+    if (!text.startsWith("osu file format")) return null;
+    void diskSet("osu", key, text);
+  }
   if (osuCache.size >= CACHE_MAX) {
     const first = osuCache.keys().next().value;
     if (first !== undefined) osuCache.delete(first);

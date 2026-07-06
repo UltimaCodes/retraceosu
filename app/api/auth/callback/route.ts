@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { exchangeCode } from "@/lib/osu/oauth";
+import { applyTokenCookies } from "@/lib/osu/session";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -15,13 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const token = await exchangeCode(code);
     const res = NextResponse.redirect(home);
-    res.cookies.set("osu_token", token.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: token.expires_in,
-    });
+    applyTokenCookies(res, token);
     res.cookies.delete("osu_oauth_state");
     return res;
   } catch {

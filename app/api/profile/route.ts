@@ -2,12 +2,14 @@ import { NextResponse, type NextRequest } from "next/server";
 import { OsuApiError, osuFetch } from "@/lib/osu/client";
 import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 import { shapeProfile } from "@/lib/osu/profile";
+import { getSession } from "@/lib/osu/session";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { analyzeTopPlays } from "@/lib/playstyle";
 
 export async function GET(req: NextRequest) {
-  const token = req.cookies.get("osu_token")?.value;
-  if (!token) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const session = await getSession(req);
+  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const token = session.token;
 
   try {
     const me = await osuFetch<OsuMe>(token, "/me/osu");
@@ -19,10 +21,12 @@ export async function GET(req: NextRequest) {
       fetchAttributes(token, s.beatmap.id, s.mods),
     );
     const plays = best.map((score, i) => ({ score, attr: attrs[i] }));
-    return NextResponse.json({
+    const out = NextResponse.json({
       profile: shapeProfile(me),
       playstyle: analyzeTopPlays(plays, me.statistics.global_rank),
     });
+    session.commit?.(out);
+    return out;
   } catch (e) {
     const status = e instanceof OsuApiError && e.status === 401 ? 401 : 502;
     return NextResponse.json({ error: "fetch_failed" }, { status });

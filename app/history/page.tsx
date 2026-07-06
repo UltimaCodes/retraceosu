@@ -139,6 +139,17 @@ function Aggregate({
   const trend = [...records].sort((a, b) => a.savedAt - b.savedAt).slice(-20);
   const maxUr = Math.max(...trend.map((r) => r.ur), 1);
 
+  // same map analyzed more than once = a progress line (record ids start with the map MD5)
+  const byMap = new Map<string, ReplayRecord[]>();
+  for (const r of records) {
+    const md5 = r.id.split(":")[0];
+    byMap.set(md5, [...(byMap.get(md5) ?? []), r]);
+  }
+  const progress = [...byMap.values()]
+    .filter((l) => l.length >= 2)
+    .map((l) => [...l].sort((a, b) => a.savedAt - b.savedAt))
+    .sort((a, b) => b.length - a.length);
+
   return (
     <div className="mt-6 space-y-4">
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -208,6 +219,56 @@ function Aggregate({
             <span>older</span>
             <span>lower is steadier · red had misses</span>
             <span>newer</span>
+          </div>
+        </section>
+      )}
+
+      {progress.length > 0 && (
+        <section className="rounded-xl border border-line bg-surface p-5">
+          <Title>Map progress</Title>
+          <p className="mt-1 text-[11px] text-white/35">
+            maps you analyzed more than once, oldest attempt first
+          </p>
+          <div className="mt-3">
+            <ScrollBox maxH="max-h-80">
+              {progress.map((attempts) => {
+                const first = attempts[0];
+                const last = attempts[attempts.length - 1];
+                const accDelta = Math.round((last.acc - first.acc) * 100) / 100;
+                const urDelta = last.ur - first.ur;
+                return (
+                  <div key={first.id} className="rounded-lg bg-black/20 px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white">
+                        {first.artist} – {first.title}{" "}
+                        <span className="text-white/40">[{first.version}]</span>
+                      </p>
+                      <span
+                        className={`shrink-0 text-[11px] font-semibold ${
+                          accDelta > 0 || urDelta < 0 ? "text-[#8be04a]" : "text-white/40"
+                        }`}
+                      >
+                        {accDelta >= 0 ? "+" : ""}
+                        {accDelta}% acc · {urDelta > 0 ? "+" : ""}
+                        {urDelta} UR
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {attempts.map((a) => (
+                        <span
+                          key={a.id + a.savedAt}
+                          className="rounded bg-black/30 px-1.5 py-0.5 text-[11px] text-white/60"
+                          title={new Date(a.savedAt).toLocaleString()}
+                        >
+                          {a.acc}% · UR {a.ur}
+                          {a.misses > 0 ? ` · ${a.misses}x` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </ScrollBox>
           </div>
         </section>
       )}
