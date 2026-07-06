@@ -47,7 +47,8 @@ export type CountryReport = {
   accLeaders: CountryPlayer[];
   aggregate: { topPpSum: number; avgAcc: number; medianPlaycount: number; totalPlaytimeSec: number };
   bigPlays: CountryPlay[];
-  modLeaders: { mod: string; play: CountryPlay }[];
+  comboBests: { combo: string; count: number; plays: CountryPlay[] }[]; // exact combo -> top plays
+
   // the fun stuff
   anthem: { beatmapId: number; title: string; artist: string; count: number }[]; // maps everyone farms
   favoriteArtists: { artist: string; count: number }[];
@@ -80,10 +81,6 @@ function toPlayer(r: RankingItem, rank: number): CountryPlayer {
     ppPerHour: playTimeSec > 0 ? Math.round((r.pp / (playTimeSec / 3600)) * 10) / 10 : 0,
   };
 }
-
-const SPLIT_MODS = ["NM", "HD", "DT", "HR", "FL", "EZ"];
-const hasMod = (combo: string, mod: string) =>
-  mod === "NM" ? combo === "" : combo.includes(mod);
 
 function toPlay(s: OsuScore, player: { id: number; username: string }): CountryPlay {
   const acr = acronyms(s.mods);
@@ -129,10 +126,15 @@ export function buildCountryReport(
       return seen.has(k) ? false : seen.add(k);
     });
 
-  const modLeaders = SPLIT_MODS.map((mod) => {
-    const best = uniquePlays.find((p) => hasMod(p.combo, mod));
-    return best ? { mod, play: best } : null;
-  }).filter((x): x is { mod: string; play: CountryPlay } => x != null);
+  // top plays per exact mod combo, so HD means HD alone and not HDDT
+  const byCombo = new Map<string, CountryPlay[]>();
+  for (const p of uniquePlays) {
+    const label = p.combo === "" ? "NM" : p.combo;
+    byCombo.set(label, [...(byCombo.get(label) ?? []), p]);
+  }
+  const comboBests = [...byCombo.entries()]
+    .map(([combo, plays]) => ({ combo, count: plays.length, plays: plays.slice(0, 5) }))
+    .sort((a, b) => b.plays[0].pp - a.plays[0].pp);
 
   // maps that show up across many different players' bests
   const mapCounts = new Map<number, { title: string; artist: string; users: Set<number> }>();
@@ -183,7 +185,7 @@ export function buildCountryReport(
       totalPlaytimeSec: players.reduce((s, p) => s + p.playTimeSec, 0),
     },
     bigPlays: uniquePlays.slice(0, 10),
-    modLeaders,
+    comboBests,
     anthem,
     favoriteArtists,
     legacy: plainPlays.length

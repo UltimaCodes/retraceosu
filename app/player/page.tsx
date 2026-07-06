@@ -164,14 +164,15 @@ function ModPicker({ plays }: { plays: PlayHighlight[] }) {
   const matches = useMemo(() => {
     if (sel.length === 0) return plays;
     if (sel.includes("NM")) return plays.filter((p) => p.combo === "");
-    return plays.filter((p) => sel.every((m) => p.combo.includes(m)));
+    const exact = [...sel].sort().join("");
+    return plays.filter((p) => p.combo === exact);
   }, [plays, sel]);
 
   return (
     <section className="rounded-xl border border-line bg-surface p-5">
       <Title>Biggest play with any mods</Title>
       <p className="mt-1 text-[11px] text-white/35">
-        toggle mods to filter their top 100, plays containing all selected mods count
+        toggle mods to filter their top 100, only plays with exactly that combo count
       </p>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {PICKER_MODS.map((m) => (
@@ -199,7 +200,7 @@ function ModPicker({ plays }: { plays: PlayHighlight[] }) {
       <div className="mt-3">
         {matches.length === 0 ? (
           <p className="py-4 text-center text-sm text-white/40">
-            no play in their top 100 uses {sel.join(" + ")}
+            no play in their top 100 uses exactly {sel.join(" + ")}
           </p>
         ) : (
           <>

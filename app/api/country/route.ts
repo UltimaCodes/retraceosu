@@ -8,7 +8,7 @@ import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 30 * 60 * 1000; // country stats move slowly and the fan-out is expensive
 
-const SAMPLE = 12; // top players we pull bests from for big-plays / per-mod leaders
+const SAMPLE = 50; // top players we pull bests from for big-plays / per-combo bests
 
 // "DTHD" -> ["DT","HD"]; every osu mod acronym is two chars
 const comboToMods = (combo: string) => combo.match(/../g) ?? [];
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     }
 
     const samples = (
-      await mapLimit(ranking.slice(0, SAMPLE), 4, async (r) => {
+      await mapLimit(ranking.slice(0, SAMPLE), 8, async (r) => {
         try {
           const plays = await osuFetch<OsuScore[]>(
             token,
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     // patch displayed plays to mod-adjusted SR (nomod SR lies about DT/HR plays)
     const shown: CountryPlay[] = [
       ...body.bigPlays,
-      ...body.modLeaders.map((m) => m.play),
+      ...body.comboBests.flatMap((c) => c.plays),
       ...(body.legacy ? [body.legacy] : []),
       ...(body.speedDemon ? [body.speedDemon] : []),
       ...(body.accBest ? [body.accBest] : []),

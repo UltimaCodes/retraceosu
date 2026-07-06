@@ -96,7 +96,7 @@ export default function CountryPage() {
         <h1 className="font-display text-2xl font-bold text-white">Country informatics</h1>
         <p className="mt-1 text-sm text-white/50">
           Pick a country: hidden prodigies, the maps everyone farms, the oldest score still
-          standing and the best play under each mod.
+          standing and the biggest play with any mod combo.
         </p>
 
         <form
@@ -138,11 +138,87 @@ export default function CountryPage() {
           <p className="mt-6 text-sm text-red-400">Couldn&apos;t load that country, try again in a minute.</p>
         )}
         {state.status === "loading" && (
-          <p className="mt-6 text-sm text-white/40">Aggregating top players…</p>
+          <p className="mt-6 text-sm text-white/40">
+            Deep-scanning the top 50, first load takes a little while…
+          </p>
         )}
         {state.status === "ready" && <Report data={state.data} />}
       </main>
     </>
+  );
+}
+
+const PICKER_MODS = ["NM", "HD", "DT", "HR", "HT", "EZ", "FL"] as const;
+
+function ComboPicker({ combos }: { combos: CountryReport["comboBests"] }) {
+  const [sel, setSel] = useState<string[]>([]);
+
+  function toggle(mod: string) {
+    setSel((cur) => {
+      if (mod === "NM") return cur.includes("NM") ? [] : ["NM"];
+      const without = cur.filter((m) => m !== "NM");
+      return without.includes(mod) ? without.filter((m) => m !== mod) : [...without, mod];
+    });
+  }
+
+  const key = sel.includes("NM") ? "NM" : [...sel].sort().join("");
+  const entry = sel.length ? combos.find((c) => c.combo === key) : null;
+
+  return (
+    <section className="rounded-xl border border-line bg-surface p-5">
+      <Title>Best score with any mods</Title>
+      <p className="mt-1 text-[11px] text-white/35">
+        toggle mods to see the country&apos;s biggest plays with exactly that combo
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {PICKER_MODS.map((m) => (
+          <button
+            key={m}
+            onClick={() => toggle(m)}
+            className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+              sel.includes(m)
+                ? "bg-pink text-white"
+                : "bg-black/20 text-white/60 hover:bg-black/40 hover:text-white"
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+        {sel.length > 0 && (
+          <button
+            onClick={() => setSel([])}
+            className="rounded-md px-3 py-1.5 text-xs text-white/40 transition hover:text-white"
+          >
+            clear
+          </button>
+        )}
+      </div>
+      <div className="mt-3">
+        {sel.length === 0 ? (
+          <ScrollBox maxH="max-h-80">
+            {combos.map((c) => (
+              <PlayLine key={c.combo} play={c.plays[0]} tag={c.combo} />
+            ))}
+          </ScrollBox>
+        ) : !entry ? (
+          <p className="py-4 text-center text-sm text-white/40">
+            nobody&apos;s bests use exactly {sel.join(" + ")}
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-[11px] text-white/35">
+              {entry.count} play{entry.count === 1 ? "" : "s"} with exactly {entry.combo} across
+              sampled bests
+            </p>
+            <ScrollBox maxH="max-h-80">
+              {entry.plays.map((play, i) => (
+                <PlayLine key={`${play.beatmapId}:${play.player.id}`} play={play} tag={`#${i + 1}`} />
+              ))}
+            </ScrollBox>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -239,14 +315,7 @@ function Report({ data }: { data: CountryReport }) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-line bg-surface p-5">
-        <Title>Best score per mod</Title>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {data.modLeaders.map((m) => (
-            <PlayLine key={m.mod} play={m.play} tag={m.mod} />
-          ))}
-        </div>
-      </section>
+      <ComboPicker combos={data.comboBests} />
 
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-line bg-surface p-5">
