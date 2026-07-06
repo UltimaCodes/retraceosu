@@ -47,3 +47,5 @@ next-env.d.ts
 
 # server disk cache
 .cache/
+.vercel
+.env*

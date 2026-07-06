@@ -40,6 +40,8 @@ export type Choke = {
   targetAcc: number;
 };
 
+export const maxDuration = 60; // candidate pricing downloads dozens of .osu files
+
 const cache = new Map<number, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
 

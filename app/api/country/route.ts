@@ -5,6 +5,9 @@ import type { OsuScore } from "@/lib/osu/types";
 import { buildCountryReport, type CountryPlay, type RankingItem } from "@/lib/informatics/country";
 import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 
+// the top-50 fan-out can run long on a cold cache
+export const maxDuration = 60;
+
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 30 * 60 * 1000; // country stats move slowly and the fan-out is expensive
 

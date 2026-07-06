@@ -6,6 +6,8 @@ import { getSession } from "@/lib/osu/session";
 import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { analyzeTopPlays } from "@/lib/playstyle";
 
+export const maxDuration = 60; // attribute fan-out for the playstyle radar
+
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

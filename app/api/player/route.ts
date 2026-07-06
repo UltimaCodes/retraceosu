@@ -5,6 +5,8 @@ import type { OsuMe, OsuScore } from "@/lib/osu/types";
 import { buildPlayerReport, type AttrMap } from "@/lib/informatics/player";
 import { fetchAttributes, mapLimit } from "@/lib/osu/difficulty";
 
+export const maxDuration = 60; // 100 attribute fetches on a cold cache
+
 const cache = new Map<string, { at: number; body: unknown }>();
 const TTL = 10 * 60 * 1000;
 
