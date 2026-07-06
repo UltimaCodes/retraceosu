@@ -27,7 +27,12 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 function Title({ children }: { children: string }) {
-  return <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>;
+  return (
+    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+      <span className="h-3.5 w-[3px] rounded-full bg-pink" aria-hidden />
+      {children}
+    </h2>
+  );
 }
 
 export default function HistoryPage() {

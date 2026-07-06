@@ -74,7 +74,7 @@ export type OsuScoreStatistics = {
 // v2 returns mods either as acronym strings or {acronym} objects depending on api version
 export type OsuMod = string | { acronym: string };
 
-export type OsuBeatmapset = { title: string; artist: string };
+export type OsuBeatmapset = { title: string; artist: string; creator?: string };
 
 export type OsuScore = {
   accuracy: number;

@@ -56,6 +56,10 @@ export type CountryReport = {
   speedDemon: CountryPlay | null; // highest effective bpm
   accBest: CountryPlay | null; // highest acc among the big guns
   modSplit: { combo: string; pct: number }[];
+  rivalry: { a: string; b: string; rank: number; gap: number } | null; // tightest adjacent pp gap
+  depth: { ratio: number; label: string }; // #1 pp vs #10 pp
+  farmDiversity: number; // unique maps as % of sampled plays
+  ssRate: number; // % of sampled bests that are SS
 };
 
 const median = (v: number[]) => {
@@ -169,6 +173,33 @@ export function buildCountryReport(
 
   const plainPlays = allPlays.map(({ play }) => play);
 
+  // the pair breathing down each other's neck
+  let rivalry: CountryReport["rivalry"] = null;
+  for (let i = 1; i < players.length; i++) {
+    const gap = players[i - 1].pp - players[i].pp;
+    if (!rivalry || gap < rivalry.gap) {
+      rivalry = {
+        a: players[i - 1].username,
+        b: players[i].username,
+        rank: players[i - 1].countryRank,
+        gap: Math.round(gap),
+      };
+    }
+  }
+
+  const p1 = players[0]?.pp ?? 0;
+  const p10 = players[9]?.pp ?? p1;
+  const ratio = p10 > 0 ? Math.round((p1 / p10) * 100) / 100 : 1;
+  const depth = {
+    ratio,
+    label: ratio >= 1.6 ? "one-man army" : ratio >= 1.25 ? "top heavy" : "deep bench",
+  };
+
+  let ssCount = 0;
+  for (const s of samples) for (const sc of s.plays) {
+    if (sc.rank === "X" || sc.rank === "XH") ssCount++;
+  }
+
   return {
     code: code.toUpperCase(),
     sampled: samples.length,
@@ -196,5 +227,11 @@ export function buildCountryReport(
       : null,
     accBest: plainPlays.length ? plainPlays.reduce((a, b) => (b.acc > a.acc ? b : a)) : null,
     modSplit,
+    rivalry,
+    depth,
+    farmDiversity: allPlays.length
+      ? Math.round((mapCounts.size / allPlays.length) * 100)
+      : 0,
+    ssRate: allPlays.length ? Math.round((ssCount / allPlays.length) * 100) : 0,
   };
 }

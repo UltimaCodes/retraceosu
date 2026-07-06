@@ -38,7 +38,10 @@ function Big({ label, value, accent }: { label: string; value: string; accent?: 
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>
+    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+      <span className="h-3.5 w-[3px] rounded-full bg-pink" aria-hidden />
+      {children}
+    </h2>
   );
 }
 
@@ -439,9 +442,7 @@ export default function AnalyzePage() {
           <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <section className="rounded-xl border border-line bg-surface p-6">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
-                Beatmap
-              </h2>
+              <SectionTitle>Beatmap</SectionTitle>
               <p className="mt-1 font-display text-lg font-bold text-white">
                 {summary.beatmap.artist} – {summary.beatmap.title}
               </p>
@@ -462,9 +463,7 @@ export default function AnalyzePage() {
             </section>
 
             <section className="rounded-xl border border-line bg-surface p-6">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
-                Replay
-              </h2>
+              <SectionTitle>Replay</SectionTitle>
               <p className="mt-1 font-display text-lg font-bold text-white">{summary.replay.player}</p>
               <p className="text-sm text-pink">
                 {["None", "NM", ""].includes(summary.replay.mods)
@@ -502,9 +501,7 @@ export default function AnalyzePage() {
 
           <section className="mt-4 rounded-xl border border-line bg-surface p-6">
             <div className="flex items-baseline justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">
-                what the cursor did
-              </h2>
+              <SectionTitle>what the cursor did</SectionTitle>
               <span className="text-xs text-white/40">
                 {formatNumber(summary.mechanics.objects)} tap objects
               </span>

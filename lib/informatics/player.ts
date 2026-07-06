@@ -52,9 +52,13 @@ export type PlayerReport = {
     fossil: PlayHighlight | null; // oldest play still standing
     scrappiest: PlayHighlight | null; // lowest acc that still made the cut
     favoriteArtists: { artist: string; count: number }[];
+    favoriteMapper: { name: string; count: number } | null;
     chokes: { plays: number; misses: number };
     longest: PlayHighlight | null;
     comfort: { lo: number; hi: number }; // modded SR p25 to p75
+    grades: { ss: number; s: number; other: number }; // ranks across the top 100
+    weekendPct: number; // share of bests set on Sat/Sun (UTC)
+    carryPct: number; // top play's share of the weighted top-100 total
   };
 };
 
@@ -196,6 +200,28 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[], attrs?: AttrMap
 
   const chokePlays = highlights.filter((h) => h.misses > 0);
 
+  const mapperCounts = new Map<string, number>();
+  for (const s of scored) {
+    const c = s.beatmapset?.creator;
+    if (c) mapperCounts.set(c, (mapperCounts.get(c) ?? 0) + 1);
+  }
+  const topMapper = [...mapperCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  let ss = 0;
+  let sGrade = 0;
+  for (const s of scored) {
+    if (s.rank === "X" || s.rank === "XH") ss++;
+    else if (s.rank === "S" || s.rank === "SH") sGrade++;
+  }
+
+  const weekend = scored.filter((s) => {
+    const d = new Date(s.created_at).getUTCDay();
+    return d === 0 || d === 6;
+  }).length;
+
+  const byPpDesc = [...pps].sort((a, b) => b - a);
+  const weightedTotal = byPpDesc.reduce((s, p, i) => s + p * 0.95 ** i, 0);
+
   const playTimeSec = st.play_time ?? 0;
   const joinDays = Math.max(1, (Date.now() - new Date(user.join_date).getTime()) / 86_400_000);
 
@@ -258,6 +284,8 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[], attrs?: AttrMap
         ? highlights.reduce((a, b) => (b.acc < a.acc ? b : a))
         : null,
       favoriteArtists,
+      favoriteMapper:
+        topMapper && topMapper[1] >= 3 ? { name: topMapper[0], count: topMapper[1] } : null,
       chokes: { plays: chokePlays.length, misses: sum(chokePlays.map((h) => h.misses)) },
       longest: highlights.length
         ? highlights.reduce((a, b) => (b.lengthSec > a.lengthSec ? b : a))
@@ -266,6 +294,12 @@ export function buildPlayerReport(user: OsuMe, best: OsuScore[], attrs?: AttrMap
         lo: Math.round(quantile(srs, 0.25) * 100) / 100,
         hi: Math.round(quantile(srs, 0.75) * 100) / 100,
       },
+      grades: { ss, s: sGrade, other: Math.max(0, scored.length - ss - sGrade) },
+      weekendPct: scored.length ? Math.round((weekend / scored.length) * 100) : 0,
+      carryPct:
+        weightedTotal > 0 && byPpDesc.length
+          ? Math.round((byPpDesc[0] / weightedTotal) * 100)
+          : 0,
     },
   };
 }

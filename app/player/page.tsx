@@ -30,7 +30,12 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 function Title({ children }: { children: string }) {
-  return <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>;
+  return (
+    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+      <span className="h-3.5 w-[3px] rounded-full bg-pink" aria-hidden />
+      {children}
+    </h2>
+  );
 }
 
 function PlayRow({ play, tag }: { play: PlayHighlight; tag?: string }) {
@@ -340,6 +345,26 @@ function Report({ data }: { data: PlayerReport }) {
             label="Recent form"
             value={`${data.recency.last90}/100`}
             sub="bests set in last 90d"
+          />
+          <Stat
+            label="Grades"
+            value={`${n.grades.ss} SS · ${n.grades.s} S`}
+            sub={n.grades.other ? `${n.grades.other} below S` : "nothing below S"}
+          />
+          <Stat
+            label="Favorite mapper"
+            value={n.favoriteMapper?.name ?? "varied"}
+            sub={n.favoriteMapper ? `${n.favoriteMapper.count} of their bests` : "no repeats"}
+          />
+          <Stat
+            label="Weekend warrior"
+            value={`${n.weekendPct}%`}
+            sub="bests set on Sat/Sun (UTC)"
+          />
+          <Stat
+            label="Carry factor"
+            value={`${n.carryPct}%`}
+            sub="of weighted pp from the top play"
           />
         </div>
       </section>

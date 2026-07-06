@@ -20,7 +20,12 @@ type State =
   | { status: "ready"; data: CountryReport };
 
 function Title({ children }: { children: string }) {
-  return <h2 className="text-xs font-semibold uppercase tracking-wide text-white/40">{children}</h2>;
+  return (
+    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-white/40">
+      <span className="h-3.5 w-[3px] rounded-full bg-pink" aria-hidden />
+      {children}
+    </h2>
+  );
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -279,6 +284,22 @@ function Report({ data }: { data: CountryReport }) {
             sub={data.modSplit[0] ? `${data.modSplit[0].pct}% of sampled bests` : ""}
           />
           <Stat label="Median playcount" value={formatNumber(data.aggregate.medianPlaycount)} sub="across top 50" />
+          <Stat
+            label="Closest rivalry"
+            value={data.rivalry ? `${data.rivalry.a} vs ${data.rivalry.b}` : "n/a"}
+            sub={data.rivalry ? `#${data.rivalry.rank} and #${data.rivalry.rank + 1}, ${data.rivalry.gap}pp apart` : ""}
+          />
+          <Stat
+            label="Scene depth"
+            value={data.depth.label}
+            sub={`#1 has ${data.depth.ratio}x the pp of #10`}
+          />
+          <Stat
+            label="Farm diversity"
+            value={`${data.farmDiversity}%`}
+            sub="unique maps across sampled bests"
+          />
+          <Stat label="SS rate" value={`${data.ssRate}%`} sub="of sampled bests are SS" />
         </div>
         {data.anthem.length > 1 && (
           <p className="mt-3 text-[11px] text-white/35">
