@@ -75,6 +75,25 @@ function CoachCol({
   );
 }
 
+// only speaks up when the map is a genuine outlier for this account; a typical
+// map for them doesn't need a callout, that's just a normal Tuesday
+function MapFitNote({ stars, ctx }: { stars: number; ctx: ReplayContext }) {
+  if (!ctx.comfort) return null;
+  const fit = mapFit(stars, ctx.comfort);
+  if (fit === "typical") return null;
+  const { lo, hi } = ctx.comfort;
+  return (
+    <p className="mt-3 flex gap-2 border-t border-line pt-3 text-sm text-white/75">
+      <span className="text-pink">›</span>
+      <span>
+        {ctx.username} is a {ctx.rankTier} player who usually plays {lo}–{hi}★. This{" "}
+        {stars.toFixed(2)}★ map is{" "}
+        {fit === "reach" ? "well above that range, a reach." : "well below that range, a curveball or warmup."}
+      </span>
+    </p>
+  );
+}
+
 function FilePill({
   kind,
   label,
@@ -95,17 +114,53 @@ function FilePill({
   );
 }
 
+// who's playing, relative to the map: a 5-digit FCing something they usually
+// can't and a 6-digit reaching for a map above their level need very different framing
+type ReplayContext = {
+  username: string;
+  globalRank: number | null;
+  rankTier: string;
+  pp: number;
+  comfort: { lo: number; hi: number } | null;
+};
+
+type MapFit = "reach" | "curveball" | "typical";
+
+function mapFit(stars: number, comfort: { lo: number; hi: number }): MapFit {
+  if (stars > comfort.hi + 0.5) return "reach";
+  if (stars < comfort.lo - 0.5) return "curveball";
+  return "typical";
+}
+
 // compact measured facts for the optional AI coach
 function coachFacts(
   s: ParsedSummary,
   pp: { pp: number; ppFc: number; stars: number } | null,
+  ctx: ReplayContext | null,
 ) {
   const m = s.mechanics;
   const b = s.beatmap;
   const rate = s.viewer.rate || 1;
+  const fit = pp && ctx?.comfort ? mapFit(pp.stars, ctx.comfort) : null;
   return {
     map: `${b.artist} - ${b.title} [${b.version}]`,
     mods: s.replay.mods,
+    player: ctx
+      ? {
+          rankTier: ctx.rankTier, // e.g. "5-digit", "6-digit", "top 1,000"
+          globalRank: ctx.globalRank,
+          pp: ctx.pp,
+          usualStarRange: ctx.comfort ? [ctx.comfort.lo, ctx.comfort.hi] : undefined,
+          thisMapVsUsualRange:
+            fit === "reach"
+              ? "this map is well above what they normally play, a reach"
+              : fit === "curveball"
+                ? "this map is well below what they normally play, a curveball or warmup"
+                : fit
+                  ? "this map is within their normal range"
+                  : undefined,
+        }
+      : undefined,
     clockRate: rate, // DT/NC 1.5, HT 0.75; every value below is already mod-adjusted
     starRatingModAdjusted: pp ? +pp.stars.toFixed(2) : undefined,
     ppEarned: pp ? Math.round(pp.pp) : undefined,
@@ -341,6 +396,7 @@ export default function AnalyzePage() {
     ur: number;
   } | null>(null);
   const [ghostErr, setGhostErr] = useState<string | null>(null);
+  const [context, setContext] = useState<ReplayContext | null>(null);
   const viewerRef = useRef<ViewerHandle>(null);
 
   async function loadGhost(e: ChangeEvent<HTMLInputElement>, base: ParsedSummary) {
@@ -385,6 +441,7 @@ export default function AnalyzePage() {
     setSaved(null);
     setGhost(null);
     setGhostErr(null);
+    setContext(null);
     const total = osrs.length;
     let savedOk = 0;
     let last: ParsedSummary | null = null;
@@ -429,12 +486,17 @@ export default function AnalyzePage() {
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
       ppPromise.then((j) => j?.pp != null && setPp(j));
+      // who's actually playing this map, so the coach can tell a reach from a curveball
+      const contextPromise = fetch(`/api/replay-context?u=${encodeURIComponent(parsed.replay.player)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      contextPromise.then((c) => c && setContext(c));
       // optional AI review; deterministic coaching already covers the fallback
-      ppPromise.then((ppRes) =>
+      Promise.all([ppPromise, contextPromise]).then(([ppRes, ctxRes]) =>
         fetch("/api/coach", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(coachFacts(parsed, ppRes?.pp != null ? ppRes : null)),
+          body: JSON.stringify(coachFacts(parsed, ppRes?.pp != null ? ppRes : null, ctxRes)),
         })
           .then((r) => (r.ok ? r.json() : null))
           .then((j) => j?.review && setAiReview(j.review))
@@ -580,6 +642,12 @@ export default function AnalyzePage() {
                     {pp.ppFc - pp.pp > 5 && ` · FC ≈ ${Math.round(pp.ppFc)}pp`}
                   </span>
                 )}
+                {context && (
+                  <span className="ml-2 rounded bg-black/25 px-1.5 py-0.5 text-[11px] font-semibold text-white/50">
+                    {context.rankTier}
+                    {context.globalRank ? ` · #${formatNumber(context.globalRank)}` : ""}
+                  </span>
+                )}
               </p>
               <div className="mt-4">
                 <Row label="Accuracy" value={`${summary.replay.accuracy.toFixed(2)}%`} />
@@ -592,6 +660,9 @@ export default function AnalyzePage() {
                 <Row label="Cursor frames" value={formatNumber(summary.replay.frameCount)} />
                 <Row label="Beatmap MD5" value={summary.replay.beatmapMD5.slice(0, 12) + "…"} />
               </div>
+              {pp && context?.comfort && (
+                <MapFitNote stars={pp.stars} ctx={context} />
+              )}
             </section>
           </div>
 
