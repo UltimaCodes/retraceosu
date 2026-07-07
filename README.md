@@ -11,18 +11,7 @@ Live at [retrace-osu.vercel.app](https://retrace-osu.vercel.app).
 - **Coaching**: deterministic strengths/weaknesses/practice from the measured numbers, plus an optional AI review that only ever sees real facts (mod-adjusted stars, real clock rate) so it can't make things up.
 - **Farm maps**: profiles your top 100 (real mod combos, comfort star band, aim/speed lean) and recommends maps ranked by actual pp gain to your weighted total, not raw fantasy numbers. Also flags chokes and bad-acc plays worth fixing.
 - **Player and country informatics**: look up any username or country, mod-combination picker over someone's top 100, pp milestones, rank history, and a pile of trivia (oldest surviving play, most farmed mapper, closest rivalry, national anthem map, etc).
-- **History**: replays you analyze save locally (IndexedDB), with recurring-weakness tracking and per-map progress across attempts.
-
-## Setup
-
-1. Create an OAuth app at https://osu.ppy.sh/home/account/edit (Application Callback URL = `http://localhost:3000/api/auth/callback`).
-2. Copy `.env.example` to `.env.local` and fill in the client ID/secret. The AI coach is optional, leave `COACH_API_KEY` empty to skip it.
-3. Install and run:
-
-```bash
-npm install
-npm run dev
-```
+- **History**: replays you analyze save locally (IndexedDB), with recurring-weakness tracking and per-map progress across attempts.\\
 
 ## Stack
 
