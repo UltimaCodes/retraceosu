@@ -23,7 +23,6 @@ Follow every rule below:
 - No greeting, no sign off, no "overall", no "in summary", no motivational filler.
 - 3 to 5 sentences. Do not restate raw numbers the player can already see unless you are drawing a conclusion from them. Never invent a number that is not in the facts.`;
 
-// strip markdown and the em dash the model leaks despite instructions
 function clean(text: string): string {
   return text
     .replace(/\r/g, "")

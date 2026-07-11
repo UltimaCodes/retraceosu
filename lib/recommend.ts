@@ -11,7 +11,7 @@ export type FarmProfile = {
   srLo: number; // nomod SR comfort band for candidates
   srHi: number;
   floor: number; // lowest pp in top plays, the bar to clear
-  top: number; // best play pp, realism ceiling for recommendations
+  top: number; // best play pp, shown for context only, recs aren't capped by it
   owned: number[]; // beatmap ids already in top plays
   sampleIds: number[]; // highest-pp beatmap ids, for measuring aim/speed lean
 };

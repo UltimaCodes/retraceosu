@@ -49,6 +49,7 @@ type FarmData = {
   };
   recommendations: Rec[];
   chokes: Choke[];
+  cursor: string | null; // search pool cursor, null once the pool is truly exhausted
 };
 
 const LEAN_STYLE: Record<Rec["lean"], string> = {
@@ -96,6 +97,7 @@ export default function FarmPage() {
   const [tab, setTab] = useState<"recs" | "chokes">("recs");
   const [limit, setLimit] = useState(PAGE);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [lenF, setLenF] = useState<LenFilter>("any");
   const [bpmF, setBpmF] = useState<BpmFilter>("any");
   const [hidden, setHidden] = useState<Set<number>>(() => {
@@ -142,6 +144,56 @@ export default function FarmPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, []);
+
+  const filtered =
+    state.status === "ready"
+      ? state.data.recommendations
+          .filter((r) => !hidden.has(r.beatmapId))
+          .filter((r) =>
+            lenF === "any" ? true : lenF === "short" ? r.lengthSec < 120 : r.lengthSec >= 120,
+          )
+          .filter((r) =>
+            bpmF === "any" ? true : bpmF === "fast" ? r.bpm >= 200 : r.bpm < 200,
+          )
+      : [];
+
+  // reveal what's already fetched first; once that runs dry, pull the next
+  // slice of the search pool so the list can grow for as long as they keep clicking
+  async function loadMore() {
+    if (state.status !== "ready") return;
+    if (filtered.length > limit) {
+      setLimit((l) => l + PAGE);
+      return;
+    }
+    const cur = state.data.cursor;
+    if (!cur || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/recommend?cursor=${encodeURIComponent(cur)}`);
+      if (!res.ok) return;
+      const j: { recommendations: Rec[]; cursor: string | null } = await res.json();
+      setState((s) => {
+        if (s.status !== "ready") return s;
+        const have = new Set(s.data.recommendations.map((r) => r.beatmapId));
+        return {
+          status: "ready",
+          data: {
+            ...s.data,
+            recommendations: [
+              ...s.data.recommendations,
+              ...j.recommendations.filter((r) => !have.has(r.beatmapId)),
+            ],
+            cursor: j.cursor,
+          },
+        };
+      });
+      setLimit((l) => l + PAGE);
+    } catch {
+      // keep the list as is, the button stays pressable
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <>
@@ -258,16 +310,11 @@ export default function FarmPage() {
                   )}
                 </div>
                 <RecsBox
-                  recs={state.data.recommendations
-                    .filter((r) => !hidden.has(r.beatmapId))
-                    .filter((r) =>
-                      lenF === "any" ? true : lenF === "short" ? r.lengthSec < 120 : r.lengthSec >= 120,
-                    )
-                    .filter((r) =>
-                      bpmF === "any" ? true : bpmF === "fast" ? r.bpm >= 200 : r.bpm < 200,
-                    )}
+                  recs={filtered}
                   limit={limit}
-                  onMore={() => setLimit((l) => l + PAGE)}
+                  hasMore={state.data.cursor != null}
+                  loadingMore={loadingMore}
+                  onMore={loadMore}
                   onHide={hide}
                 />
               </>
@@ -277,7 +324,7 @@ export default function FarmPage() {
 
             <p className="mt-4 text-[11px] text-white/35">
               {tab === "recs"
-                ? "Pool: popular ranked maps in your comfort star range, minus your top 100. Each is priced under your real mod combos at that combo's median accuracy, capped near your best play, and ranked toward your measured aim/speed lean."
+                ? "Pool: popular ranked maps in your comfort star range, minus your top 100. Each is priced under your real mod combos at that combo's median accuracy and ranked toward your measured aim/speed lean. Load more keeps digging deeper into the pool for as long as you want."
                 : "Plays already in your top 100 where an FC or a realistic accuracy bump would net real pp. Clean 98%+ runs you'd only marginally improve are left out."}
             </p>
           </>
@@ -290,25 +337,27 @@ export default function FarmPage() {
 function RecsBox({
   recs,
   limit,
+  hasMore,
+  loadingMore,
   onMore,
   onHide,
 }: {
   recs: Rec[];
   limit: number;
+  hasMore: boolean;
+  loadingMore: boolean;
   onMore: () => void;
   onHide: (id: number) => void;
 }) {
-  if (recs.length === 0) {
-    return (
-      <p className="mt-4 text-sm text-white/50">
-        Nothing matches here right now, loosen the filters or refresh later (the pool rotates
-        with popular maps).
-      </p>
-    );
-  }
   const shown = recs.slice(0, limit);
   return (
     <>
+      {recs.length === 0 ? (
+        <p className="mt-4 text-sm text-white/50">
+          Nothing matches here right now, loosen the filters
+          {hasMore ? " or load more maps from deeper in the pool" : ""}.
+        </p>
+      ) : (
       <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto rounded-xl border border-line bg-black/10 p-2 pr-3">
         {shown.map((r) => (
           <a
@@ -353,12 +402,18 @@ function RecsBox({
           </a>
         ))}
       </div>
-      {recs.length > limit && (
+      )}
+      {(recs.length > limit || hasMore) && (
         <button
           onClick={onMore}
-          className="mt-3 w-full rounded-lg border border-line bg-black/20 py-2.5 text-sm font-semibold text-white/70 transition hover:border-pink/40 hover:text-white"
+          disabled={loadingMore}
+          className="mt-3 w-full rounded-lg border border-line bg-black/20 py-2.5 text-sm font-semibold text-white/70 transition hover:border-pink/40 hover:text-white disabled:opacity-50"
         >
-          Show more ({recs.length - limit} left)
+          {loadingMore
+            ? "Digging deeper into the pool…"
+            : recs.length > limit
+              ? `Show more (${recs.length - limit} ready)`
+              : "Load more maps"}
         </button>
       )}
     </>
@@ -391,7 +446,7 @@ function ChokesBox({ chokes }: { chokes: Choke[] }) {
             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
               {c.reason === "choke" ? (
                 <span className="rounded bg-red-400/15 px-1.5 py-0.5 font-semibold text-red-300">
-                  {c.misses} miss · FC it
+                  {c.misses} miss · FC ≈ {c.targetAcc}%
                 </span>
               ) : (
                 <span className="rounded bg-amber-400/15 px-1.5 py-0.5 font-semibold text-amber-300">
